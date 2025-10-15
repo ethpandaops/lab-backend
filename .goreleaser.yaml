@@ -1,0 +1,96 @@
+version: 2
+
+project_name: lab-backend
+
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: linux-amd64
+    env:
+      - CGO_ENABLED=0
+    main: ./cmd/server
+    binary: lab-backend
+    goos:
+    - linux
+    goarch:
+    - amd64
+    ldflags:
+      - -s -w
+      - -X github.com/ethpandaops/lab-backend/internal/version.Version={{.Tag}}
+      - -X github.com/ethpandaops/lab-backend/internal/version.GitCommit={{.FullCommit}}
+      - -X github.com/ethpandaops/lab-backend/internal/version.BuildDate={{.Date}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+  - id: linux-arm64
+    env:
+      - CGO_ENABLED=0
+    main: ./cmd/server
+    binary: lab-backend
+    goos:
+    - linux
+    goarch:
+    - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/ethpandaops/lab-backend/internal/version.Version={{.Tag}}
+      - -X github.com/ethpandaops/lab-backend/internal/version.GitCommit={{.FullCommit}}
+      - -X github.com/ethpandaops/lab-backend/internal/version.BuildDate={{.Date}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+dockers:
+  - use: buildx
+    goos: linux
+    goarch: amd64
+    dockerfile: Dockerfile
+    image_templates:
+      - "ethpandaops/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ethpandaops/{{ .ProjectName }}:{{ if .Env.RELEASE_SUFFIX }}{{ .Env.RELEASE_SUFFIX }}-{{ end }}latest-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--build-arg=VERSION={{.Tag}}"
+      - "--build-arg=GIT_COMMIT={{.FullCommit}}"
+      - "--build-arg=BUILD_DATE={{.Date}}"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+  - use: buildx
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile
+    image_templates:
+      - "ethpandaops/{{ .ProjectName }}:{{ .Version }}-arm64v8"
+      - "ethpandaops/{{ .ProjectName }}:{{ if .Env.RELEASE_SUFFIX }}{{ .Env.RELEASE_SUFFIX }}-{{ end }}latest-arm64v8"
+    build_flag_templates:
+      - "--platform=linux/arm64/v8"
+      - "--build-arg=VERSION={{.Tag}}"
+      - "--build-arg=GIT_COMMIT={{.FullCommit}}"
+      - "--build-arg=BUILD_DATE={{.Date}}"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+
+docker_manifests:
+  - name_template: ethpandaops/{{ .ProjectName }}:{{ .Version }}
+    image_templates:
+      - ethpandaops/{{ .ProjectName }}:{{ .Version }}-amd64
+      - ethpandaops/{{ .ProjectName }}:{{ .Version }}-arm64v8
+  - name_template: ethpandaops/{{ .ProjectName }}:{{ .Version }}-arm64
+    image_templates:
+      - ethpandaops/{{ .ProjectName }}:{{ .Version }}-arm64v8
+  - name_template: ethpandaops/{{ .ProjectName }}:{{ if .Env.RELEASE_SUFFIX }}{{ .Env.RELEASE_SUFFIX }}-{{ end }}latest
+    image_templates:
+      - ethpandaops/{{ .ProjectName }}:{{ if .Env.RELEASE_SUFFIX }}{{ .Env.RELEASE_SUFFIX }}-{{ end }}latest-amd64
+      - ethpandaops/{{ .ProjectName }}:{{ if .Env.RELEASE_SUFFIX }}{{ .Env.RELEASE_SUFFIX }}-{{ end }}latest-arm64v8

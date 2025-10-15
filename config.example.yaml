@@ -1,0 +1,50 @@
+# Lab Backend Configuration
+# This config uses external URLs that work for local development
+# In Kubernetes, these can be overridden via ConfigMap to use internal DNS
+
+server:
+  # HTTP server settings
+  port: 8080
+  host: "0.0.0.0"
+
+  # Timeouts
+  read_timeout: 30s
+  write_timeout: 30s
+  shutdown_timeout: 10s
+
+  # Logging
+  log_level: "info"  # trace, debug, info, warn, error, fatal, panic
+
+# Network definitions
+# Each network routes to a specific CBT API backend
+networks:
+  - name: mainnet
+    enabled: true
+    target_url: "https://cbt-api-mainnet.primary.production.platform.ethpandaops.io/api/v1"
+
+  - name: sepolia
+    enabled: true
+    target_url: "https://cbt-api-sepolia.primary.production.platform.ethpandaops.io/api/v1"
+
+  - name: holesky
+    enabled: true
+    target_url: "https://cbt-api-holesky.primary.production.platform.ethpandaops.io/api/v1"
+
+  - name: hoodi
+    enabled: true
+    target_url: "https://cbt-api-hoodi.primary.production.platform.ethpandaops.io/api/v1"
+
+# Experiment feature flags
+# Controls which experiments are available per network
+experiments:
+  experiments:
+    live-slots:
+      enabled: true
+      networks: ["mainnet"]  # Only enabled for mainnet
+
+    block-production:
+      enabled: false         # Disabled for all networks
+
+    attestation-performance:
+      enabled: true
+      networks: []           # Empty = enabled for all networks

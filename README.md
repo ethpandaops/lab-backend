@@ -1,173 +1,128 @@
-# Lab Backend
+# lab-backend
 
-API router and frontend server for the Ethereum Lab application.
+API gateway and frontend server for routing requests to network-specific CBT API backends.
 
 ## Overview
 
-Lab Backend serves as a unified gateway that:
-- Routes API requests to network-specific CBT API backends
-- Serves the Lab frontend with optimized caching
-- Provides configuration endpoint for network metadata
+lab-backend is a reverse proxy that routes API requests to different CBT API backends based on network (mainnet, sepolia, holesky, hoodi, etc). It also serves the Lab frontend with runtime configuration injection.
 
-## Project Status
+**What it does:**
+- Routes `/api/v1/{network}/*` requests to the appropriate CBT API backend
+- Serves frontend static assets with embedded filesystem
+- Injects runtime configuration into the frontend (network metadata, experiment flags)
+- Provides health and metrics endpoints for observability
 
-**Current Phase**: Plan 2 - Infrastructure (Complete)
+## Quick Start
 
-This project is being built incrementally following the Ultrathink methodology:
-- ✅ **Plan 1 - Foundation**: Go module, config package, version package, directory structure
-- ✅ **Plan 2 - Infrastructure**: Middleware, server setup, health handlers, graceful shutdown
-- ⏳ **Plan 3 - API Proxy**: Proxy logic, API routing, config endpoint
-- ⏳ **Plan 4 - Frontend**: Frontend serving, static assets, config injection
-- ⏳ **Plan 5 - Deployment**: Docker build, Kubernetes manifests, production config
+### Option 1: Quick Start (Placeholder Frontend)
 
-## Project Structure
+```bash
+# 1. Configure networks and backends
+cp config.example.yaml config.yaml
+# Edit config.yaml with your CBT API backend URLs
 
+# 2. Build and run
+make run
 ```
-lab-backend/
-├── cmd/
-│   └── server/              # ✅ Main entry point with graceful shutdown
-│       └── main.go
-├── internal/
-│   ├── config/              # ✅ Configuration loading and validation
-│   │   ├── config.go
-│   │   └── networks.go
-│   ├── version/             # ✅ Version information
-│   │   └── version.go
-│   ├── middleware/          # ✅ HTTP middleware (logging, metrics, CORS, recovery)
-│   │   ├── logging.go
-│   │   ├── metrics.go
-│   │   ├── cors.go
-│   │   └── recovery.go
-│   ├── server/              # ✅ Server setup with middleware chain
-│   │   └── server.go
-│   ├── handlers/            # ✅ HTTP handlers (health check)
-│   │   └── health.go
-│   ├── proxy/               # ⏳ Proxy logic (Plan 3)
-│   ├── frontend/            # ⏳ Frontend serving (Plan 4)
-│   └── api/                 # ⏳ API handlers (Plan 3)
-├── web/                     # ⏳ Static assets (Plan 4)
-├── config.example.yaml      # ✅ Configuration template
-├── config.yaml              # Local config (gitignored, copy from example)
-├── Makefile                 # ✅ Build automation
-├── go.mod                   # ✅ Go module definition
-└── README.md                # ✅ This file
+
+Visit `http://localhost:8080` to see a placeholder page with server status.
+
+### Option 2: Full Frontend (w/ Lab Application)
+
+```bash
+# 1. Configure networks and backends
+cp config.example.yaml config.yaml
+
+# 2. Build with full frontend (clones and builds lab frontend), pass FRONTEND_REF=release/v1.0.0 to switch branch/hash used.
+make run-all
 ```
+
+Visit `http://localhost:8080` to access the full Lab application.
+
+**Note:** Requires Node.js 20+ and npm installed.
+
+## Make Commands
+
+| Command | Description |
+|---------|-------------|
+| `make help` | Show available commands |
+| `make build` | Build the lab-backend binary (with placeholder frontend) |
+| `make build-all` | Clone lab frontend, build it, and embed in backend |
+| `make run` | Build and run the server (placeholder frontend) |
+| `make run-all` | Build with full frontend and run the server |
+| `make clean` | Remove all build artifacts and cloned frontend |
+| `make test` | Run tests |
 
 ## Configuration
 
-The service is configured via `config.yaml` in the project root. Example:
+Copy `config.example.yaml` to `config.yaml` and configure:
+
+### Server Settings
 
 ```yaml
 server:
   port: 8080
   host: "0.0.0.0"
+  read_timeout: 30s
+  write_timeout: 30s
+  shutdown_timeout: 10s
   log_level: "info"
+```
 
+### Network Configuration
+
+```yaml
 networks:
   - name: mainnet
     enabled: true
     target_url: "https://cbt-api-mainnet.primary.production.platform.ethpandaops.io/api/v1"
+
+  - name: sepolia
+    enabled: true
+    target_url: "https://cbt-api-sepolia.primary.production.platform.ethpandaops.io/api/v1"
 ```
 
-### Configuration Strategy
+**For Kubernetes deployments**, use internal cluster DNS:
 
-- **Local Development**: Uses external URLs (default in `config.yaml`)
-- **Kubernetes**: ConfigMap can override with internal DNS for performance
-  - Pattern: `http://{service}.{namespace}.svc.cluster.local:8080/api/v1`
-  - Example: `http://cbt-api-mainnet.xatu.svc.cluster.local:8080/api/v1`
+```yaml
+target_url: "http://cbt-api-mainnet.xatu.svc.cluster.local:8080/api/v1"
+```
 
-## Development
+### Proxy Routing
 
-### Prerequisites
-
-- Go 1.23.0+
-- Access to CBT API backends
-
-### Current Status
-
-Plans 1 & 2 are complete. The HTTP server is fully operational with:
-- ✅ Configuration loading and validation
-- ✅ Version information with build-time injection
-- ✅ HTTP server with middleware stack (logging, metrics, CORS, recovery)
-- ✅ Health check endpoint at `/health`
-- ✅ Prometheus metrics at `/metrics`
-- ✅ Graceful shutdown handling
-
-### Running the Server
+Requests to `/api/v1/{network}/*` are proxied to the configured backend:
 
 ```bash
-# First-time setup: Copy config template
-cp config.example.yaml config.yaml
+# Routes to mainnet CBT API
+GET /api/v1/mainnet/fct_block?slot_eq=1000
 
-# Build the server
-make build
-
-# Run the server
-make run
-
-# Or run directly
-./bin/lab-backend -config config.yaml
+# Routes to sepolia CBT API
+GET /api/v1/sepolia/fct_attestation_correctness_by_validator_head
 ```
 
-### Testing Endpoints
+**Error responses:**
+- `400` - Invalid path format
+- `404` - Network not found in configuration
+- `503` - Network disabled (set `enabled: false` in config)
+
+### Frontend
 
 ```bash
-# Health check
-curl http://localhost:8080/health
-# {"status":"healthy","version":"dev","timestamp":1697395200}
-
-# Prometheus metrics
-curl http://localhost:8080/metrics
+GET /          # Serves index.html with injected config
+GET /app/*     # SPA routing (falls back to index.html)
+GET /static/*  # Static assets with 1-year cache headers
 ```
 
-### Testing Configuration
+## How It Works
 
-```go
-package main
-
-import (
-    "fmt"
-    "log"
-
-    "github.com/ethpandaops/lab-backend/internal/config"
-    "github.com/ethpandaops/lab-backend/internal/version"
-)
-
-func main() {
-    // Load config
-    cfg, err := config.Load("config.yaml")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Validate config
-    if err := cfg.Validate(); err != nil {
-        log.Fatal(err)
-    }
-
-    // Print version
-    fmt.Printf("Version: %s\n", version.Full())
-
-    // Print enabled networks
-    for _, net := range cfg.GetEnabledNetworks() {
-        fmt.Printf("Network: %s -> %s\n", net.Name, net.TargetURL)
-    }
-}
-```
-
-## Next Steps
-
-See `ai_plans/lab-backend/03-api-proxy.md` for the next implementation phase, which will add:
-- Network-based API routing
-- Reverse proxy to CBT API backends
-- Configuration API endpoint
-
-## Architecture
+### Request Flow
 
 ```
-Lab Frontend → Lab Backend → CBT API (mainnet/sepolia/holesky/hoodi)
+Browser Request
+  ↓
+Lab Backend
+  ├─ /api/v1/{network}/*  → Extract network → Proxy to CBT API backend
+  ├─ /api/v1/config       → Return config JSON
+  ├─ /health, /metrics    → Health/observability endpoints
+  └─ /* (everything else) → Serve frontend (index.html or static assets)
 ```
-
-## License
-
-MIT License

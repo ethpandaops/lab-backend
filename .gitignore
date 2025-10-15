@@ -1,0 +1,29 @@
+# Local configuration (copy from config.example.yaml)
+config.yaml
+
+# Build artifacts
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test coverage
+*.out
+coverage.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Development
+tmp/
+.tmp/
+
+# Frontend assets (symlink or embedded)
+web/frontend/*
+!web/frontend/.gitkeep

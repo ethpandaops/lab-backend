@@ -67,6 +67,8 @@ type Network struct {
 // Provider defines the interface for network data providers.
 // This abstraction allows for multiple implementations (in-memory, Redis, etc.).
 type Provider interface {
+	Start(ctx context.Context) error
+	Stop() error
 	GetNetworks(ctx context.Context) map[string]*Network
 	GetActiveNetworks(ctx context.Context) map[string]*Network
 	GetNetwork(ctx context.Context, name string) (*Network, bool)

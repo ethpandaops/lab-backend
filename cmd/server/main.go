@@ -28,12 +28,10 @@ type infrastructure struct {
 
 // services holds application services.
 type services struct {
-	cartographoorSvc           *cartographoor.Service
-	cartographoorProvider      cartographoor.Provider
-	cartographoorRedisProvider *cartographoor.RedisProvider
-	upstreamBounds             *bounds.Service
-	boundsProvider             bounds.Provider
-	boundsRedisProvider        *bounds.RedisProvider
+	cartographoorSvc      *cartographoor.Service
+	cartographoorProvider cartographoor.Provider
+	upstreamBounds        *bounds.Service
+	boundsProvider        bounds.Provider
 }
 
 func main() {
@@ -193,7 +191,7 @@ func setupServices(
 		}
 
 		// Wrap with Redis provider (mandatory)
-		provider := cartographoor.NewRedisProvider(
+		svc.cartographoorProvider = cartographoor.NewRedisProvider(
 			logger,
 			cfg.Cartographoor,
 			infra.redisClient,
@@ -201,18 +199,9 @@ func setupServices(
 			svc.cartographoorSvc,
 		)
 
-		var ok bool
-
-		svc.cartographoorRedisProvider, ok = provider.(*cartographoor.RedisProvider)
-		if !ok {
-			return nil, fmt.Errorf("failed to assert cartographoor provider type")
+		if err := svc.cartographoorProvider.Start(ctx); err != nil {
+			return nil, fmt.Errorf("failed to start cartographoor provider: %w", err)
 		}
-
-		if err := svc.cartographoorRedisProvider.Start(ctx); err != nil {
-			return nil, fmt.Errorf("failed to start Redis cartographoor provider: %w", err)
-		}
-
-		svc.cartographoorProvider = svc.cartographoorRedisProvider
 
 		logger.Info("Cartographoor service started")
 	}
@@ -230,7 +219,7 @@ func setupServices(
 	}
 
 	// Wrap with Redis provider
-	boundsProv := bounds.NewRedisProvider(
+	svc.boundsProvider = bounds.NewRedisProvider(
 		logger,
 		bounds.Config{
 			RefreshInterval: cfg.Bounds.RefreshInterval,
@@ -242,18 +231,9 @@ func setupServices(
 		svc.upstreamBounds,
 	)
 
-	var ok bool
-
-	svc.boundsRedisProvider, ok = boundsProv.(*bounds.RedisProvider)
-	if !ok {
-		return nil, fmt.Errorf("failed to assert bounds provider type")
+	if err := svc.boundsProvider.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start bounds provider: %w", err)
 	}
-
-	if err := svc.boundsRedisProvider.Start(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start Redis bounds provider: %w", err)
-	}
-
-	svc.boundsProvider = svc.boundsRedisProvider
 
 	logger.Info("Bounds service started")
 
@@ -285,7 +265,7 @@ func startServer(cfg *config.Config, svc *services, logger *logrus.Logger) (*ser
 // shutdownGracefully performs graceful shutdown of all services.
 // Shutdown order:
 // 1. HTTP server (stop accepting requests).
-// 2. Redis providers (stop background loops that use Redis).
+// 2. Providers (stop background loops that use Redis).
 // 3. Upstream services (stop their background loops).
 // 4. Leader election (release leadership lock).
 // 5. Redis client (close connections).
@@ -307,16 +287,16 @@ func shutdownGracefully(
 		logger.WithError(err).Error("Error during server shutdown")
 	}
 
-	// Stop Redis providers
-	if svc.cartographoorRedisProvider != nil {
-		if err := svc.cartographoorRedisProvider.Stop(); err != nil {
-			logger.WithError(err).Error("Error stopping cartographoor Redis provider")
+	// Stop providers
+	if svc.cartographoorProvider != nil {
+		if err := svc.cartographoorProvider.Stop(); err != nil {
+			logger.WithError(err).Error("Error stopping cartographoor provider")
 		}
 	}
 
-	if svc.boundsRedisProvider != nil {
-		if err := svc.boundsRedisProvider.Stop(); err != nil {
-			logger.WithError(err).Error("Error stopping bounds Redis provider")
+	if svc.boundsProvider != nil {
+		if err := svc.boundsProvider.Stop(); err != nil {
+			logger.WithError(err).Error("Error stopping bounds provider")
 		}
 	}
 

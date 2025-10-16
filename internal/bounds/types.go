@@ -21,6 +21,8 @@ type BoundsData struct {
 // Provider defines the interface for bounds data providers.
 // This abstraction enables future Redis implementation.
 type Provider interface {
+	Start(ctx context.Context) error
+	Stop() error
 	GetBounds(ctx context.Context, network string) (*BoundsData, bool)
 	GetAllBounds(ctx context.Context) map[string]*BoundsData
 }

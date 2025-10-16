@@ -10,6 +10,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/lab-backend/internal/bounds"
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	"github.com/ethpandaops/lab-backend/internal/config"
 	"github.com/ethpandaops/lab-backend/internal/server"
@@ -61,6 +62,11 @@ func main() {
 		"log_level": cfg.Server.LogLevel,
 	}).Info("Configuration loaded")
 
+	// Create a cancellable context for the application lifecycle
+	// This will be cancelled on shutdown to signal all services to stop
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Create cartographoor service
 	var cartographoorSvc *cartographoor.Service
 
@@ -73,7 +79,6 @@ func main() {
 		}
 
 		// Start cartographoor service
-		ctx := context.Background()
 		if serr := cartographoorSvc.Start(ctx); serr != nil {
 			logger.WithError(serr).Fatal("Failed to start cartographoor service")
 		}
@@ -81,8 +86,21 @@ func main() {
 		logger.Info("Cartographoor service started")
 	}
 
+	// Create bounds service
+	boundsSvc, err := bounds.New(logger, cfg, cartographoorSvc)
+	if err != nil {
+		logger.WithError(err).Fatal("Failed to create bounds service")
+	}
+
+	// Start bounds service
+	if berr := boundsSvc.Start(ctx); berr != nil {
+		logger.WithError(berr).Fatal("Failed to start bounds service")
+	}
+
+	logger.Info("Bounds service started")
+
 	// Create server
-	srv, err := server.New(logger, cfg, cartographoorSvc)
+	srv, err := server.New(logger, cfg, cartographoorSvc, boundsSvc)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to create server")
 	}
@@ -106,8 +124,13 @@ func main() {
 	// Graceful shutdown
 	logger.Info("Initiating graceful shutdown...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	defer cancel()
+	// Cancel the application context to signal all services to stop
+	// This triggers ctx.Done() in all service refresh loops
+	cancel()
+
+	// Create a timeout context for the shutdown process itself
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+	defer shutdownCancel()
 
 	// Stop cartographoor service
 	if cartographoorSvc != nil {
@@ -116,7 +139,12 @@ func main() {
 		}
 	}
 
-	if err := srv.Shutdown(ctx); err != nil {
+	// Stop bounds service
+	if err := boundsSvc.Stop(); err != nil {
+		logger.WithError(err).Error("Error stopping bounds service")
+	}
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.WithError(err).Error("Error during shutdown")
 
 		os.Exit(1)

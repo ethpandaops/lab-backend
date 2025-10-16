@@ -23,6 +23,12 @@ cartographoor:
   refresh_interval: 5m   # How often to refresh network data
   request_timeout: 30s   # HTTP request timeout for fetching data
 
+# Bounds service configuration
+# Fetches and caches min/max position bounds for incremental CBT tables
+bounds:
+  refresh_interval: 10s       # How often to refresh bounds data (minimum 5s)
+  request_timeout: 30s        # HTTP request timeout for fetching bounds (minimum 5s)
+
 # Network configuration (optional overrides and additions)
 # Cartographoor provides base networks - use this section to:
 # 1. Disable specific cartographoor networks

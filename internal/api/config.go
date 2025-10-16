@@ -11,6 +11,9 @@ import (
 	"github.com/ethpandaops/lab-backend/internal/config"
 )
 
+// Verify interface compliance at compile time.
+var _ http.Handler = (*ConfigHandler)(nil)
+
 // ConfigResponse is the JSON response for /api/v1/config.
 type ConfigResponse struct {
 	Networks    []NetworkInfo          `json:"networks"`

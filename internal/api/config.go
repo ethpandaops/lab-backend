@@ -4,6 +4,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
@@ -82,57 +83,86 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildNetworks converts config.NetworkConfig to NetworkInfo slice.
+// Uses same cartographoor-first, config-overlay approach as proxy.
+// Only returns enabled networks.
 func (h *ConfigHandler) buildNetworks() []NetworkInfo {
-	networks := make([]NetworkInfo, 0)
+	// Step 1: Build merged network list (cartographoor + config overlay)
+	mergedNetworks := h.buildMergedNetworkList()
 
-	// Add cartographoor networks if available
-	if h.provider != nil {
-		cartographoorNets := h.provider.GetActiveNetworks()
-		for _, net := range cartographoorNets {
-			networks = append(networks, NetworkInfo{
-				Name:        net.Name,
-				DisplayName: net.DisplayName,
-				Enabled:     true,
-				Status:      net.Status,
-			})
+	// Step 2: Convert to NetworkInfo slice (only enabled networks)
+	networks := make([]NetworkInfo, 0, len(mergedNetworks))
+	for _, net := range mergedNetworks {
+		// Skip disabled networks
+		if !net.Enabled {
+			continue
 		}
-	}
 
-	// Add static config networks (avoid duplicates)
-	seenNetworks := make(map[string]bool)
-	for _, ni := range networks {
-		seenNetworks[ni.Name] = true
-	}
+		// Get display name and status from cartographoor if available
+		displayName := net.Name
+		status := "active"
 
-	for _, nc := range h.config.Networks {
-		if !seenNetworks[nc.Name] {
-			networks = append(networks, buildNetworkInfo(nc))
+		if h.provider != nil {
+			if cartNet, exists := h.provider.GetNetwork(net.Name); exists {
+				displayName = cartNet.DisplayName
+				status = cartNet.Status
+			}
 		}
+
+		// Capitalize first letter if no cartographoor display name
+		if displayName == net.Name && len(displayName) > 0 {
+			displayName = strings.ToUpper(displayName[:1]) + displayName[1:]
+		}
+
+		networks = append(networks, NetworkInfo{
+			Name:        net.Name,
+			DisplayName: displayName,
+			Enabled:     true, // All returned networks are enabled
+			Status:      status,
+		})
 	}
+
+	// Sort networks alphabetically by name for deterministic ordering
+	sort.Slice(networks, func(i, j int) bool {
+		return networks[i].Name < networks[j].Name
+	})
 
 	return networks
 }
 
-// buildNetworkInfo converts config.NetworkConfig to NetworkInfo.
-func buildNetworkInfo(nc config.NetworkConfig) NetworkInfo {
-	// Capitalize first letter for display name
-	displayName := nc.Name
-	if len(displayName) > 0 {
-		displayName = strings.ToUpper(displayName[:1]) + displayName[1:]
+// buildMergedNetworkList creates merged network list: cartographoor base + config.yaml overlay.
+// This mirrors the same logic used in proxy.buildMergedNetworkList().
+func (h *ConfigHandler) buildMergedNetworkList() map[string]config.NetworkConfig {
+	networks := make(map[string]config.NetworkConfig)
+
+	// Step 1: Start with cartographoor networks (if provider available)
+	if h.provider != nil {
+		cartographoorNets := h.provider.GetActiveNetworks()
+		for name, net := range cartographoorNets {
+			networks[name] = config.NetworkConfig{
+				Name:      net.Name,
+				Enabled:   true, // cartographoor "active" networks enabled by default
+				TargetURL: net.TargetURL,
+			}
+		}
 	}
 
-	// Set status based on enabled flag
-	status := "inactive"
-	if nc.Enabled {
-		status = "active"
+	// Step 2: Apply config.yaml overrides and additions
+	for _, configNet := range h.config.Networks {
+		if existing, exists := networks[configNet.Name]; exists {
+			// Override cartographoor network settings
+			existing.Enabled = configNet.Enabled // can disable cartographoor network
+			if configNet.TargetURL != "" {
+				existing.TargetURL = configNet.TargetURL // can override URL
+			}
+
+			networks[configNet.Name] = existing
+		} else {
+			// Add static network (not in cartographoor)
+			networks[configNet.Name] = configNet
+		}
 	}
 
-	return NetworkInfo{
-		Name:        nc.Name,
-		DisplayName: displayName,
-		Enabled:     nc.Enabled,
-		Status:      status,
-	}
+	return networks
 }
 
 // buildExperiments converts config.ExperimentConfig to map.

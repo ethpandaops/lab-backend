@@ -30,6 +30,12 @@ func (n *NetworkConfig) Validate() error {
 		return fmt.Errorf("network name cannot be empty")
 	}
 
+	// Skip target_url validation for disabled networks
+	// (they might be cartographoor overrides with only enabled: false)
+	if !n.Enabled {
+		return nil
+	}
+
 	if n.TargetURL == "" {
 		return fmt.Errorf("network %s: target_url cannot be empty", n.Name)
 	}

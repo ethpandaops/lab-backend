@@ -4,6 +4,8 @@ package config
 import (
 	"fmt"
 	"net/url"
+
+	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 )
 
 // NetworkConfig defines a single network's configuration.
@@ -74,4 +76,39 @@ func (c *Config) GetEnabledNetworks() []NetworkConfig {
 	}
 
 	return enabled
+}
+
+// BuildMergedNetworkList creates merged network list: cartographoor base + config.yaml overlay.
+// Simple helper - no interfaces, just takes the concrete provider and merges with config.
+func BuildMergedNetworkList(cfg *Config, provider cartographoor.Provider) map[string]NetworkConfig {
+	networks := make(map[string]NetworkConfig)
+
+	// Step 1: Start with cartographoor networks (if available)
+	if provider != nil {
+		for name, net := range provider.GetActiveNetworks() {
+			networks[name] = NetworkConfig{
+				Name:      net.Name,
+				Enabled:   true,
+				TargetURL: net.TargetURL,
+			}
+		}
+	}
+
+	// Step 2: Apply config.yaml overrides and additions
+	for _, configNet := range cfg.Networks {
+		if existing, exists := networks[configNet.Name]; exists {
+			// Override cartographoor network
+			existing.Enabled = configNet.Enabled
+			if configNet.TargetURL != "" {
+				existing.TargetURL = configNet.TargetURL
+			}
+
+			networks[configNet.Name] = existing
+		} else {
+			// Add static network
+			networks[configNet.Name] = configNet
+		}
+	}
+
+	return networks
 }

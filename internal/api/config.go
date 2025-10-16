@@ -86,10 +86,10 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Uses same cartographoor-first, config-overlay approach as proxy.
 // Only returns enabled networks.
 func (h *ConfigHandler) buildNetworks() []NetworkInfo {
-	// Step 1: Build merged network list (cartographoor + config overlay)
-	mergedNetworks := h.buildMergedNetworkList()
+	// Build merged network list (cartographoor + config overlay)
+	mergedNetworks := config.BuildMergedNetworkList(h.config, h.provider)
 
-	// Step 2: Convert to NetworkInfo slice (only enabled networks)
+	// Convert to NetworkInfo slice (only enabled networks)
 	networks := make([]NetworkInfo, 0, len(mergedNetworks))
 	for _, net := range mergedNetworks {
 		// Skip disabled networks
@@ -125,42 +125,6 @@ func (h *ConfigHandler) buildNetworks() []NetworkInfo {
 	sort.Slice(networks, func(i, j int) bool {
 		return networks[i].Name < networks[j].Name
 	})
-
-	return networks
-}
-
-// buildMergedNetworkList creates merged network list: cartographoor base + config.yaml overlay.
-// This mirrors the same logic used in proxy.buildMergedNetworkList().
-func (h *ConfigHandler) buildMergedNetworkList() map[string]config.NetworkConfig {
-	networks := make(map[string]config.NetworkConfig)
-
-	// Step 1: Start with cartographoor networks (if provider available)
-	if h.provider != nil {
-		cartographoorNets := h.provider.GetActiveNetworks()
-		for name, net := range cartographoorNets {
-			networks[name] = config.NetworkConfig{
-				Name:      net.Name,
-				Enabled:   true, // cartographoor "active" networks enabled by default
-				TargetURL: net.TargetURL,
-			}
-		}
-	}
-
-	// Step 2: Apply config.yaml overrides and additions
-	for _, configNet := range h.config.Networks {
-		if existing, exists := networks[configNet.Name]; exists {
-			// Override cartographoor network settings
-			existing.Enabled = configNet.Enabled // can disable cartographoor network
-			if configNet.TargetURL != "" {
-				existing.TargetURL = configNet.TargetURL // can override URL
-			}
-
-			networks[configNet.Name] = existing
-		} else {
-			// Add static network (not in cartographoor)
-			networks[configNet.Name] = configNet
-		}
-	}
 
 	return networks
 }

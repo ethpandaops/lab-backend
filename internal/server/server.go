@@ -65,7 +65,7 @@ func New(
 	logger.WithField("networks", proxyHandler.NetworkCount()).Info("Registered proxy routes")
 
 	// Build config data for frontend injection
-	configData := buildConfigData(cfg)
+	configData := buildConfigData(cfg, provider)
 
 	// Frontend handler (catch-all for non-API routes)
 	frontendHandler, err := frontend.New(configData, logger)
@@ -123,9 +123,19 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 // buildConfigData converts Config to frontend config format.
 // This is what gets injected into index.html as window.__CONFIG__.
-func buildConfigData(cfg *config.Config) interface{} {
-	networks := make([]map[string]interface{}, 0, len(cfg.Networks))
-	for _, net := range cfg.Networks {
+// Uses same cartographoor-first, config-overlay approach as API.
+func buildConfigData(cfg *config.Config, provider cartographoor.Provider) interface{} {
+	// Build merged network list (cartographoor + config overlay)
+	mergedNetworks := config.BuildMergedNetworkList(cfg, provider)
+
+	// Convert to frontend format (only enabled networks)
+	networks := make([]map[string]interface{}, 0, len(mergedNetworks))
+	for _, net := range mergedNetworks {
+		// Skip disabled networks
+		if !net.Enabled {
+			continue
+		}
+
 		networks = append(networks, map[string]interface{}{
 			"name":    net.Name,
 			"enabled": net.Enabled,

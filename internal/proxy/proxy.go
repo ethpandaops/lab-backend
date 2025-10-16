@@ -237,7 +237,7 @@ func (p *Proxy) syncLoop(offset time.Duration) {
 // SyncNetworks syncs proxy networks using cartographoor-first, config-overlay approach.
 func (p *Proxy) SyncNetworks() error {
 	// Build merged network list (cartographoor + config overlay)
-	desiredNetworks := p.buildMergedNetworkList()
+	desiredNetworks := config.BuildMergedNetworkList(p.config, p.provider)
 
 	p.logger.WithField("count", len(desiredNetworks)).Debug("Syncing networks from merged config")
 
@@ -291,51 +291,6 @@ func (p *Proxy) SyncNetworks() error {
 	}
 
 	return nil
-}
-
-// buildMergedNetworkList creates merged network list: cartographoor base + config.yaml overlay.
-func (p *Proxy) buildMergedNetworkList() map[string]config.NetworkConfig {
-	networks := make(map[string]config.NetworkConfig)
-
-	// Step 1: Start with cartographoor networks (if provider available)
-	if p.provider != nil {
-		cartographoorNets := p.provider.GetActiveNetworks()
-		for name, net := range cartographoorNets {
-			networks[name] = config.NetworkConfig{
-				Name:      net.Name,
-				Enabled:   true, // cartographoor "active" networks enabled by default.
-				TargetURL: net.TargetURL,
-			}
-		}
-
-		p.logger.WithField("cartographoor_count", len(cartographoorNets)).Debug("Loaded cartographoor networks")
-	}
-
-	// Step 2: Apply config.yaml overrides and additions
-	for _, configNet := range p.config.Networks {
-		if existing, exists := networks[configNet.Name]; exists {
-			// Override cartographoor network settings
-			existing.Enabled = configNet.Enabled // can disable cartographoor network
-			if configNet.TargetURL != "" {
-				existing.TargetURL = configNet.TargetURL // can override URL
-			}
-
-			networks[configNet.Name] = existing
-
-			p.logger.WithFields(logrus.Fields{
-				"network": configNet.Name,
-				"enabled": configNet.Enabled,
-			}).Debug("Applied config override for cartographoor network")
-		} else {
-			// Add static network (not in cartographoor)
-			networks[configNet.Name] = configNet
-			if configNet.Enabled {
-				p.logger.WithField("network", configNet.Name).Debug("Added static network from config")
-			}
-		}
-	}
-
-	return networks
 }
 
 // NetworkCount returns the number of active network proxies.

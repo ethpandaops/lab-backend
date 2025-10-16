@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -16,6 +17,7 @@ type Config struct {
 	Networks      []NetworkConfig               `yaml:"networks"`
 	Experiments   map[string]ExperimentSettings `yaml:"experiments"`
 	Cartographoor cartographoor.Config          `yaml:"cartographoor"`
+	Bounds        BoundsConfig                  `yaml:"bounds"`
 }
 
 // ServerConfig contains HTTP server settings.
@@ -26,6 +28,48 @@ type ServerConfig struct {
 	WriteTimeout    time.Duration `yaml:"write_timeout"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 	LogLevel        string        `yaml:"log_level"`
+}
+
+// BoundsConfig holds bounds service configuration.
+type BoundsConfig struct {
+	RefreshInterval time.Duration `yaml:"refresh_interval"` // How often to refresh bounds
+	RequestTimeout  time.Duration `yaml:"request_timeout"`  // HTTP request timeout
+}
+
+// Validate validates the configuration and sets defaults.
+func (c *BoundsConfig) Validate() error {
+	// Set defaults
+	if c.RefreshInterval == 0 {
+		c.RefreshInterval = 7 * time.Second
+	}
+
+	if c.RequestTimeout == 0 {
+		c.RequestTimeout = 30 * time.Second
+	}
+
+	// Validate ranges
+	if c.RefreshInterval < 5*time.Second {
+		return fmt.Errorf(
+			"refresh_interval must be at least 5 seconds, got %v",
+			c.RefreshInterval,
+		)
+	}
+
+	if c.RequestTimeout < 5*time.Second {
+		return fmt.Errorf(
+			"request_timeout must be at least 5 seconds, got %v",
+			c.RequestTimeout,
+		)
+	}
+
+	return nil
+}
+
+// HTTPClient returns a configured HTTP client for upstream requests.
+func (c *BoundsConfig) HTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: c.RequestTimeout,
+	}
 }
 
 // Load loads configuration from a YAML file.
@@ -101,6 +145,11 @@ func (c *Config) Validate() error {
 	// Validate cartographoor config
 	if err := c.Cartographoor.Validate(); err != nil {
 		return fmt.Errorf("cartographoor: %w", err)
+	}
+
+	// Validate bounds config
+	if err := c.Bounds.Validate(); err != nil {
+		return fmt.Errorf("bounds: %w", err)
 	}
 
 	return nil

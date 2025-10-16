@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/lab-backend/internal/api"
+	"github.com/ethpandaops/lab-backend/internal/bounds"
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	"github.com/ethpandaops/lab-backend/internal/config"
 	"github.com/ethpandaops/lab-backend/internal/frontend"
@@ -20,16 +21,19 @@ import (
 
 // Server represents the HTTP server.
 type Server struct {
-	httpServer *http.Server
-	proxy      *proxy.Proxy
-	logger     logrus.FieldLogger
+	httpServer            *http.Server
+	proxy                 *proxy.Proxy
+	logger                logrus.FieldLogger
+	cartographoorProvider cartographoor.Provider
+	boundsProvider        bounds.Provider
 }
 
 // New creates a new HTTP server with all routes and middleware.
 func New(
 	logger logrus.FieldLogger,
 	cfg *config.Config,
-	cartographoorSvc *cartographoor.Service,
+	cartographoorProvider cartographoor.Provider,
+	boundsProvider bounds.Provider,
 ) (*Server, error) {
 	mux := http.NewServeMux()
 
@@ -42,21 +46,17 @@ func New(
 	logger.Info("Registered route: GET /metrics")
 
 	// Config API (must come before wildcard proxy route)
-	var provider cartographoor.Provider
-	if cartographoorSvc != nil {
-		provider = cartographoorSvc
-	}
-
-	configHandler := api.NewConfigHandler(cfg, provider)
+	configHandler := api.NewConfigHandler(cfg, cartographoorProvider)
 	mux.Handle("GET /api/v1/config", configHandler)
 	logger.Info("Registered route: GET /api/v1/config")
 
-	// Network-based proxy for all other API routes
-	if cartographoorSvc != nil {
-		provider = cartographoorSvc
-	}
+	// Network-scoped bounds endpoint (must come before wildcard proxy)
+	boundsHandler := api.NewBoundsHandler(boundsProvider, logger)
+	mux.Handle("GET /api/v1/{network}/bounds", boundsHandler)
+	logger.Info("Registered route: GET /api/v1/{network}/bounds")
 
-	proxyHandler, err := proxy.New(logger.WithField("component", "proxy"), cfg, provider)
+	// Network-based proxy for all other API routes
+	proxyHandler, err := proxy.New(logger.WithField("component", "proxy"), cfg, cartographoorProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create proxy: %w", err)
 	}
@@ -94,9 +94,11 @@ func New(
 	}
 
 	return &Server{
-		httpServer: httpServer,
-		proxy:      proxyHandler,
-		logger:     logger,
+		httpServer:            httpServer,
+		proxy:                 proxyHandler,
+		logger:                logger,
+		cartographoorProvider: cartographoorProvider,
+		boundsProvider:        boundsProvider,
 	}, nil
 }
 

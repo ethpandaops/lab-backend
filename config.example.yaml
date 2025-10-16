@@ -35,7 +35,6 @@ leader:
 # Cartographoor integration
 # Dynamically discover and manage networks from ethPandaOps cartographoor
 cartographoor:
-  enabled: true  # Set to false to disable cartographoor integration
   source_url: "https://ethpandaops-platform-production-cartographoor.ams3.cdn.digitaloceanspaces.com/networks.json"
   refresh_interval: 5m   # How often the leader refreshes network data from upstream
   request_timeout: 30s   # HTTP request timeout for fetching data

@@ -119,7 +119,9 @@ func (r *RedisProvider) GetNetworks(ctx context.Context) map[string]*Network {
 }
 
 // GetActiveNetworks returns only active networks by reading directly from Redis.
-func (r *RedisProvider) GetActiveNetworks(ctx context.Context) map[string]*Network {
+func (r *RedisProvider) GetActiveNetworks(
+	ctx context.Context,
+) map[string]*Network {
 	allNetworks := r.GetNetworks(ctx)
 
 	result := make(map[string]*Network)
@@ -134,7 +136,10 @@ func (r *RedisProvider) GetActiveNetworks(ctx context.Context) map[string]*Netwo
 }
 
 // GetNetwork returns a specific network by reading directly from Redis.
-func (r *RedisProvider) GetNetwork(ctx context.Context, name string) (*Network, bool) {
+func (r *RedisProvider) GetNetwork(
+	ctx context.Context,
+	name string,
+) (*Network, bool) {
 	allNetworks := r.GetNetworks(ctx)
 	network, ok := allNetworks[name]
 

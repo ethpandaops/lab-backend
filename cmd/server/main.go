@@ -175,46 +175,46 @@ func setupServices(
 ) (*services, error) {
 	svc := &services{}
 
-	// Create cartographoor service
-	if cfg.Cartographoor.Enabled {
-		var err error
+	// Create cartographoor service (mandatory)
+	var err error
 
-		// Create upstream service (fetches from Cartographoor API)
-		svc.cartographoorSvc, err = cartographoor.New(&cfg.Cartographoor, logger)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create cartographoor service: %w", err)
-		}
-
-		// Start upstream service
-		if err := svc.cartographoorSvc.Start(ctx); err != nil {
-			return nil, fmt.Errorf("failed to start cartographoor service: %w", err)
-		}
-
-		// Wrap with Redis provider (mandatory)
-		svc.cartographoorProvider = cartographoor.NewRedisProvider(
-			logger,
-			cfg.Cartographoor,
-			infra.redisClient,
-			infra.elector,
-			svc.cartographoorSvc,
-		)
-
-		if err := svc.cartographoorProvider.Start(ctx); err != nil {
-			return nil, fmt.Errorf("failed to start cartographoor provider: %w", err)
-		}
-
-		logger.Info("Cartographoor service started")
+	// Create upstream service (fetches from Cartographoor API)
+	svc.cartographoorSvc, err = cartographoor.New(&cfg.Cartographoor, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cartographoor service: %w", err)
 	}
 
+	// Start upstream service
+	err = svc.cartographoorSvc.Start(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start cartographoor service: %w", err)
+	}
+
+	// Wrap with Redis provider (mandatory)
+	svc.cartographoorProvider = cartographoor.NewRedisProvider(
+		logger,
+		cfg.Cartographoor,
+		infra.redisClient,
+		infra.elector,
+		svc.cartographoorSvc,
+	)
+
+	err = svc.cartographoorProvider.Start(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start cartographoor provider: %w", err)
+	}
+
+	logger.Info("Cartographoor service started")
+
 	// Create upstream bounds service
-	var err error
 
 	svc.upstreamBounds, err = bounds.New(logger, cfg, svc.cartographoorProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bounds service: %w", err)
 	}
 
-	if err := svc.upstreamBounds.Start(ctx); err != nil {
+	err = svc.upstreamBounds.Start(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("failed to start bounds service: %w", err)
 	}
 
@@ -231,7 +231,8 @@ func setupServices(
 		svc.upstreamBounds,
 	)
 
-	if err := svc.boundsProvider.Start(ctx); err != nil {
+	err = svc.boundsProvider.Start(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("failed to start bounds provider: %w", err)
 	}
 

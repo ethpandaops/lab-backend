@@ -63,7 +63,10 @@ type ConfigHandler struct {
 }
 
 // NewConfigHandler creates a new config API handler.
-func NewConfigHandler(cfg *config.Config, provider cartographoor.Provider) *ConfigHandler {
+func NewConfigHandler(
+	cfg *config.Config,
+	provider cartographoor.Provider,
+) *ConfigHandler {
 	return &ConfigHandler{
 		config:   cfg,
 		provider: provider,
@@ -99,7 +102,7 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *ConfigHandler) GetConfigData(ctx context.Context) ConfigResponse {
 	return ConfigResponse{
 		Networks:    h.buildNetworks(ctx),
-		Experiments: h.buildExperiments(),
+		Experiments: h.buildExperiments(ctx),
 		Bounds:      make(map[string]TableBounds),
 	}
 }
@@ -175,7 +178,7 @@ func (h *ConfigHandler) buildNetworks(ctx context.Context) []NetworkInfo {
 }
 
 // buildExperiments converts config experiments map to API response array.
-func (h *ConfigHandler) buildExperiments() []Experiment {
+func (h *ConfigHandler) buildExperiments(_ context.Context) []Experiment {
 	experiments := make([]Experiment, 0, len(h.config.Experiments))
 
 	for name, settings := range h.config.Experiments {

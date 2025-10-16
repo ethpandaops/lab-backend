@@ -100,7 +100,10 @@ func (r *RedisProvider) Stop() error {
 }
 
 // GetBounds returns bounds for a specific network by reading directly from Redis.
-func (r *RedisProvider) GetBounds(ctx context.Context, network string) (*BoundsData, bool) {
+func (r *RedisProvider) GetBounds(
+	ctx context.Context,
+	network string,
+) (*BoundsData, bool) {
 	data, err := r.redis.Get(ctx, fmt.Sprintf("%s%s", redisKeyPrefix, network))
 	if err != nil {
 		r.log.WithError(err).WithField("network", network).Debug("Failed to get bounds from Redis")
@@ -119,7 +122,9 @@ func (r *RedisProvider) GetBounds(ctx context.Context, network string) (*BoundsD
 }
 
 // GetAllBounds returns bounds for all networks by reading directly from Redis.
-func (r *RedisProvider) GetAllBounds(ctx context.Context) map[string]*BoundsData {
+func (r *RedisProvider) GetAllBounds(
+	ctx context.Context,
+) map[string]*BoundsData {
 	// Get all bounds keys matching the pattern
 	client := r.redis.GetClient()
 

@@ -41,12 +41,6 @@ func New(cfg *Config, logger logrus.FieldLogger) (*Service, error) {
 // When wrapped by RedisProvider, this does minimal initialization.
 // RedisProvider controls all fetching (including initial fetch) via its loop.
 func (s *Service) Start(ctx context.Context) error {
-	if !s.config.Enabled {
-		s.logger.Info("Cartographoor service disabled")
-
-		return nil
-	}
-
 	s.logger.WithField("source_url", s.config.SourceURL).Info("Cartographoor service started")
 
 	return nil
@@ -54,10 +48,6 @@ func (s *Service) Start(ctx context.Context) error {
 
 // Stop stops the cartographoor service.
 func (s *Service) Stop() error {
-	if !s.config.Enabled {
-		return nil
-	}
-
 	s.logger.Info("Stopping cartographoor service")
 
 	return nil
@@ -65,7 +55,9 @@ func (s *Service) Stop() error {
 
 // FetchNetworks fetches network data from Cartographoor API and returns it.
 // Does NOT cache - returns data directly to caller (RedisProvider).
-func (s *Service) FetchNetworks(ctx context.Context) (map[string]*Network, error) {
+func (s *Service) FetchNetworks(
+	ctx context.Context,
+) (map[string]*Network, error) {
 	s.logger.Debug("Fetching cartographoor data")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.config.SourceURL, http.NoBody)
@@ -105,7 +97,9 @@ func (s *Service) FetchNetworks(ctx context.Context) (map[string]*Network, error
 }
 
 // processNetworks converts raw cartographoor data to Network structs.
-func (s *Service) processNetworks(response *CartographoorResponse) map[string]*Network {
+func (s *Service) processNetworks(
+	response *CartographoorResponse,
+) map[string]*Network {
 	networks := make(map[string]*Network, len(response.Networks))
 
 	for networkName, rawNet := range response.Networks {

@@ -173,11 +173,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("leader.retry_interval must be positive")
 	}
 
-	// Validate networks
-	if len(c.Networks) == 0 && !c.Cartographoor.Enabled {
-		return fmt.Errorf("at least one network must be configured when cartographoor is disabled")
-	}
-
 	// Validate individual network configs if any are provided
 	networkNames := make(map[string]bool)
 

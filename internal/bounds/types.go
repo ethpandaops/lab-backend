@@ -39,5 +39,5 @@ type IncrementalTableRecord struct {
 // AdminCBTIncrementalResponse is the upstream API response wrapper.
 type AdminCBTIncrementalResponse struct {
 	AdminCBTIncremental []IncrementalTableRecord `json:"admin_cbt_incremental"`
-	NextPageToken       string                   `json:"next_page_token"` // Token for pagination
+	NextPageToken       string                   `json:"next_page_token"`
 }

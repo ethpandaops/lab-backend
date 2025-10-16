@@ -61,7 +61,9 @@ func (s *Service) Stop() error {
 
 // FetchBounds fetches bounds data for all enabled networks and returns it.
 // Does NOT cache - returns data directly to caller (RedisProvider).
-func (s *Service) FetchBounds(ctx context.Context) (map[string]*BoundsData, error) {
+func (s *Service) FetchBounds(
+	ctx context.Context,
+) (map[string]*BoundsData, error) {
 	s.logger.Debug("Fetching bounds data for all networks")
 
 	// Build merged network list (cartographoor + config overrides)
@@ -248,7 +250,9 @@ func (s *Service) fetchBoundsForNetwork(
 }
 
 // calculateBounds computes per-table min/max from incremental table records.
-func (s *Service) calculateBounds(records []IncrementalTableRecord) *BoundsData {
+func (s *Service) calculateBounds(
+	records []IncrementalTableRecord,
+) *BoundsData {
 	if len(records) == 0 {
 		return &BoundsData{
 			Tables:      make(map[string]TableBounds),

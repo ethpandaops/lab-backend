@@ -12,10 +12,10 @@ import (
 
 // Config represents the complete application configuration.
 type Config struct {
-	Server        ServerConfig         `yaml:"server"`
-	Networks      []NetworkConfig      `yaml:"networks"`
-	Experiments   ExperimentConfig     `yaml:"experiments"`
-	Cartographoor cartographoor.Config `yaml:"cartographoor"`
+	Server        ServerConfig                  `yaml:"server"`
+	Networks      []NetworkConfig               `yaml:"networks"`
+	Experiments   map[string]ExperimentSettings `yaml:"experiments"`
+	Cartographoor cartographoor.Config          `yaml:"cartographoor"`
 }
 
 // ServerConfig contains HTTP server settings.

@@ -64,8 +64,8 @@ func New(
 	mux.Handle("/api/v1/", proxyHandler)
 	logger.WithField("networks", proxyHandler.NetworkCount()).Info("Registered proxy routes")
 
-	// Build config data for frontend injection
-	configData := buildConfigData(cfg, provider)
+	// Build config data for frontend injection (use same logic as API endpoint)
+	configData := configHandler.GetConfigData()
 
 	// Frontend handler (catch-all for non-API routes)
 	frontendHandler, err := frontend.New(configData, logger)
@@ -119,39 +119,4 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	return s.httpServer.Shutdown(ctx)
-}
-
-// buildConfigData converts Config to frontend config format.
-// This is what gets injected into index.html as window.__CONFIG__.
-// Uses same cartographoor-first, config-overlay approach as API.
-func buildConfigData(cfg *config.Config, provider cartographoor.Provider) interface{} {
-	// Build merged network list (cartographoor + config overlay)
-	mergedNetworks := config.BuildMergedNetworkList(cfg, provider)
-
-	// Convert to frontend format (only enabled networks)
-	networks := make([]map[string]interface{}, 0, len(mergedNetworks))
-	for _, net := range mergedNetworks {
-		// Skip disabled networks
-		if !net.Enabled {
-			continue
-		}
-
-		networks = append(networks, map[string]interface{}{
-			"name":    net.Name,
-			"enabled": net.Enabled,
-		})
-	}
-
-	experiments := make(map[string]interface{})
-	for name, exp := range cfg.Experiments.Experiments {
-		experiments[name] = map[string]interface{}{
-			"enabled":  exp.Enabled,
-			"networks": exp.Networks,
-		}
-	}
-
-	return map[string]interface{}{
-		"networks":    networks,
-		"experiments": experiments,
-	}
 }

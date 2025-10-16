@@ -9,21 +9,22 @@ import (
 )
 
 // NetworkConfig defines a single network's configuration.
+// When used in config.yaml, all fields except Name are optional.
+// Cartographoor values are used as defaults, config.yaml provides overrides.
 type NetworkConfig struct {
-	Name      string `yaml:"name"`       // "mainnet", "sepolia", etc.
-	Enabled   bool   `yaml:"enabled"`    // Whether this network is active
-	TargetURL string `yaml:"target_url"` // Backend CBT API URL
-}
-
-// ExperimentConfig contains experiment feature flags.
-type ExperimentConfig struct {
-	Experiments map[string]ExperimentSettings `yaml:"experiments"`
+	Name         string `yaml:"name"`                    // Required: "mainnet", "sepolia", etc.
+	Enabled      *bool  `yaml:"enabled,omitempty"`       // Optional: Whether this network is active
+	TargetURL    string `yaml:"target_url,omitempty"`    // Optional: Backend CBT API URL
+	DisplayName  string `yaml:"display_name,omitempty"`  // Optional: Human-readable name
+	ChainID      *int64 `yaml:"chain_id,omitempty"`      // Optional: Numeric chain ID
+	GenesisTime  *int64 `yaml:"genesis_time,omitempty"`  // Optional: Unix timestamp
+	GenesisDelay *int64 `yaml:"genesis_delay,omitempty"` // Optional: Genesis delay in seconds
 }
 
 // ExperimentSettings defines settings for a single experiment.
 type ExperimentSettings struct {
 	Enabled  bool     `yaml:"enabled"`
-	Networks []string `yaml:"networks"` // Empty = all networks
+	Networks []string `yaml:"networks,omitempty"` // Empty/omitted = all networks
 }
 
 // Validate validates a network configuration.
@@ -34,15 +35,16 @@ func (n *NetworkConfig) Validate() error {
 
 	// Skip target_url validation for disabled networks
 	// (they might be cartographoor overrides with only enabled: false)
-	if !n.Enabled {
+	if n.Enabled != nil && !*n.Enabled {
 		return nil
 	}
 
+	// If target_url is not set, it's expected to come from cartographoor
 	if n.TargetURL == "" {
-		return fmt.Errorf("network %s: target_url cannot be empty", n.Name)
+		return nil
 	}
 
-	// Validate URL format
+	// Validate URL format if provided
 	parsedURL, err := url.Parse(n.TargetURL)
 	if err != nil {
 		return fmt.Errorf("network %s: invalid target_url: %w", n.Name, err)
@@ -70,7 +72,9 @@ func (c *Config) GetNetworkByName(name string) (*NetworkConfig, error) {
 func (c *Config) GetEnabledNetworks() []NetworkConfig {
 	enabled := make([]NetworkConfig, 0, len(c.Networks))
 	for _, network := range c.Networks {
-		if network.Enabled {
+		// If Enabled is not set (nil), default to true
+		// If Enabled is set, use its value
+		if network.Enabled == nil || *network.Enabled {
 			enabled = append(enabled, network)
 		}
 	}
@@ -79,17 +83,23 @@ func (c *Config) GetEnabledNetworks() []NetworkConfig {
 }
 
 // BuildMergedNetworkList creates merged network list: cartographoor base + config.yaml overlay.
-// Simple helper - no interfaces, just takes the concrete provider and merges with config.
+// Priority: cartographoor is the source of truth, config.yaml provides overrides.
 func BuildMergedNetworkList(cfg *Config, provider cartographoor.Provider) map[string]NetworkConfig {
 	networks := make(map[string]NetworkConfig)
 
 	// Step 1: Start with cartographoor networks (if available)
+	// Store ALL metadata from cartographoor as the base layer
 	if provider != nil {
 		for name, net := range provider.GetActiveNetworks() {
+			enabled := true
 			networks[name] = NetworkConfig{
-				Name:      net.Name,
-				Enabled:   true,
-				TargetURL: net.TargetURL,
+				Name:         net.Name,
+				Enabled:      &enabled,
+				TargetURL:    net.TargetURL,
+				DisplayName:  net.DisplayName,
+				ChainID:      &net.ChainID,
+				GenesisTime:  &net.GenesisTime,
+				GenesisDelay: &net.GenesisDelay,
 			}
 		}
 	}
@@ -97,15 +107,41 @@ func BuildMergedNetworkList(cfg *Config, provider cartographoor.Provider) map[st
 	// Step 2: Apply config.yaml overrides and additions
 	for _, configNet := range cfg.Networks {
 		if existing, exists := networks[configNet.Name]; exists {
-			// Override cartographoor network
-			existing.Enabled = configNet.Enabled
+			// Override cartographoor network with config.yaml values
+			// Only override fields that are explicitly set in config.yaml.
+			if configNet.Enabled != nil {
+				existing.Enabled = configNet.Enabled
+			}
+
 			if configNet.TargetURL != "" {
 				existing.TargetURL = configNet.TargetURL
 			}
 
+			if configNet.DisplayName != "" {
+				existing.DisplayName = configNet.DisplayName
+			}
+
+			if configNet.ChainID != nil {
+				existing.ChainID = configNet.ChainID
+			}
+
+			if configNet.GenesisTime != nil {
+				existing.GenesisTime = configNet.GenesisTime
+			}
+
+			if configNet.GenesisDelay != nil {
+				existing.GenesisDelay = configNet.GenesisDelay
+			}
+
 			networks[configNet.Name] = existing
 		} else {
-			// Add static network
+			// Add standalone network (not in cartographoor)
+			// For standalone networks, if Enabled is not set, default to true.
+			if configNet.Enabled == nil {
+				enabled := true
+				configNet.Enabled = &enabled
+			}
+
 			networks[configNet.Name] = configNet
 		}
 	}

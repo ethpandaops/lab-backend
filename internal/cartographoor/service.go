@@ -190,7 +190,6 @@ func (s *Service) fetchAndUpdate(ctx context.Context) error {
 	s.logger.WithFields(logrus.Fields{
 		"total_networks":  len(networks),
 		"active_networks": s.countActive(networks),
-		"last_update":     rawResponse.LastUpdate,
 	}).Info("Updated cartographoor data")
 
 	return nil
@@ -217,13 +216,16 @@ func (s *Service) processNetworks(response *CartographoorResponse) map[string]*N
 		targetURL := s.constructTargetURL(networkName)
 
 		networks[networkName] = &Network{
-			Name:        networkName,
-			DisplayName: displayName,
-			Description: description,
-			Status:      rawNet.Status,
-			ChainID:     rawNet.ChainID,
-			TargetURL:   targetURL,
-			LastUpdated: rawNet.LastUpdated,
+			Name:         networkName,
+			DisplayName:  displayName,
+			Description:  description,
+			Status:       rawNet.Status,
+			ChainID:      rawNet.ChainID,
+			GenesisTime:  rawNet.GenesisConfig.GenesisTime,
+			GenesisDelay: rawNet.GenesisConfig.GenesisDelay,
+			Forks:        rawNet.Forks,
+			TargetURL:    targetURL,
+			LastUpdated:  rawNet.LastUpdated,
 		}
 	}
 

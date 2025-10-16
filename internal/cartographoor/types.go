@@ -8,35 +8,37 @@ const (
 )
 
 // CartographoorResponse represents the top-level JSON structure from networks.json.
+// Only parses fields we actually use - ignores clients, providers, timestamps, etc.
 type CartographoorResponse struct {
 	Networks        map[string]RawNetwork      `json:"networks"`
 	NetworkMetadata map[string]NetworkMetadata `json:"networkMetadata"`
-	Clients         map[string]Client          `json:"clients"`
-	LastUpdate      time.Time                  `json:"lastUpdate"`
-	Duration        float64                    `json:"duration"` // Duration in milliseconds
-	Providers       []DataProvider             `json:"providers"`
-}
-
-// DataProvider represents a data provider in cartographoor.
-type DataProvider struct {
-	Name string `json:"name"`
 }
 
 // RawNetwork represents a network entry in the cartographoor JSON.
-// Note: The network name is the map KEY, not the "name" field.
+// Only parses essential fields - network name comes from map key.
 type RawNetwork struct {
-	Name          string                 `json:"name"`       // Short name (e.g., "devnet-3") - not used, we use map key
-	Repository    string                 `json:"repository"` // Optional - only on devnets
-	Path          string                 `json:"path"`       // Optional - only on devnets
-	URL           string                 `json:"url"`        // Optional - only on devnets
-	Status        string                 `json:"status"`
-	ChainID       int64                  `json:"chainId"` // Integer, not string
-	LastUpdated   time.Time              `json:"lastUpdated"`
-	Description   string                 `json:"description"`
-	GenesisConfig map[string]interface{} `json:"genesisConfig"`
-	ServiceURLs   map[string]string      `json:"serviceUrls"` // Kept for completeness, not used for CBT URL
-	Forks         map[string]interface{} `json:"forks"`
-	SelfHostedDNS bool                   `json:"selfHostedDns"`
+	Status        string        `json:"status"`
+	ChainID       int64         `json:"chainId"`
+	LastUpdated   time.Time     `json:"lastUpdated"`
+	GenesisConfig GenesisConfig `json:"genesisConfig"`
+	Forks         Forks         `json:"forks"`
+}
+
+// GenesisConfig contains genesis configuration.
+type GenesisConfig struct {
+	GenesisTime  int64 `json:"genesisTime"`  // Unix timestamp
+	GenesisDelay int64 `json:"genesisDelay"` // Genesis delay in seconds
+}
+
+// Forks contains fork information for a network.
+type Forks struct {
+	Consensus map[string]Fork `json:"consensus"` // Map of fork name to fork info
+}
+
+// Fork represents a single fork with epoch and minimum client versions.
+type Fork struct {
+	Epoch             int64             `json:"epoch"`
+	MinClientVersions map[string]string `json:"minClientVersions"` // Map of client name to version (camelCase to match cartographoor JSON)
 }
 
 // NetworkMetadata contains display information for networks.
@@ -45,23 +47,18 @@ type NetworkMetadata struct {
 	Description string `json:"description"`
 }
 
-// Client represents an Ethereum client implementation.
-type Client struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"` // "execution" or "consensus"
-	Repository  string `json:"repository"`
-	Description string `json:"description"`
-}
-
 // Network is the processed network data used internally.
 type Network struct {
-	Name        string
-	DisplayName string
-	Description string
-	Status      string
-	ChainID     int64  // Integer chain ID
-	TargetURL   string // CBT API URL constructed from network name
-	LastUpdated time.Time
+	Name         string
+	DisplayName  string
+	Description  string
+	Status       string
+	ChainID      int64  // Integer chain ID
+	GenesisTime  int64  // Unix timestamp
+	GenesisDelay int64  // Genesis delay in seconds
+	Forks        Forks  // Fork information
+	TargetURL    string // CBT API URL constructed from network name
+	LastUpdated  time.Time
 }
 
 // Provider defines the interface for network data providers.

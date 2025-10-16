@@ -26,39 +26,47 @@ cartographoor:
 # Network configuration (optional overrides and additions)
 # Cartographoor provides base networks - use this section to:
 # 1. Disable specific cartographoor networks
-# 2. Override URLs for cartographoor networks
+# 2. Override metadata/URLs for cartographoor networks
 # 3. Add custom/local networks not in cartographoor
+#
+# All fields except 'name' are optional. Cartographoor is the source of truth,
+# and config.yaml values override cartographoor when explicitly set.
 networks:
   # Example: Disable a cartographoor network
   # - name: sepolia
   #   enabled: false
 
-  # Example: Override URL for a cartographoor network
+  # Example: Override URL and metadata for a cartographoor network
   # - name: mainnet
   #   enabled: true
   #   target_url: "https://my-custom-cbt.example.com/api/v1"
+  #   display_name: "Ethereum Mainnet"
+  #   chain_id: 1
+  #   genesis_time: 1606824023
+  #   genesis_delay: 0
 
   # Example: Add a custom network not in cartographoor
   # - name: my-local-devnet
   #   enabled: true
   #   target_url: "http://localhost:8080/api/v1"
+  #   display_name: "My Local Devnet"
+  #   chain_id: 32382
+  #   genesis_time: 1234567890
+  #   genesis_delay: 10
 
-  # Note: Networks from cartographoor are automatically added with:
-  # - enabled: true (by default)
-  # - target_url: https://cbt-api-{network}.primary.production.platform.ethpandaops.io/api/v1
-  # Only override if you need different behavior
+  # Note: Networks from cartographoor are automatically added with all metadata.
+  # Only add entries here to disable, override, or add custom networks.
 
 # Experiment feature flags
 # Controls which experiments are available per network
+# By default, experiments are enabled for all networks unless overridden
 experiments:
-  experiments:
-    live-slots:
-      enabled: true
-      networks: ["mainnet"]  # Only enabled for mainnet
+  live-slots:
+    enabled: true
+    networks: ["mainnet"]  # Only enabled for mainnet
 
-    block-production:
-      enabled: false         # Disabled for all networks
+  block-production:
+    enabled: false         # Disabled for all networks
 
-    attestation-performance:
-      enabled: true
-      networks: []           # Empty = enabled for all networks
+  attestation-performance:
+    enabled: true          # Enabled for all networks (no networks specified = default)

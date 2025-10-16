@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,29 +20,94 @@ import (
 	"github.com/ethpandaops/lab-backend/internal/version"
 )
 
+// infrastructure holds core infrastructure components.
+type infrastructure struct {
+	redisClient redis.Client
+	elector     leader.Elector
+}
+
+// services holds application services.
+type services struct {
+	cartographoorSvc           *cartographoor.Service
+	cartographoorProvider      cartographoor.Provider
+	cartographoorRedisProvider *cartographoor.RedisProvider
+	upstreamBounds             *bounds.Service
+	boundsProvider             bounds.Provider
+	boundsRedisProvider        *bounds.RedisProvider
+}
+
 func main() {
 	// Parse command-line flags
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
 	flag.Parse()
 
 	// Setup logger
+	logger := setupLogger()
+
+	// Load and validate configuration
+	cfg, err := loadAndValidateConfig(*configPath, logger)
+	if err != nil {
+		logger.WithError(err).Fatal("Configuration error")
+	}
+
+	// Create application context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Setup infrastructure (redis, leader election, etc)
+	infra, err := setupInfrastructure(ctx, cfg, logger)
+	if err != nil {
+		logger.WithError(err).Fatal("Infrastructure setup failed")
+	}
+
+	// Setup services (cartographoor, bounds)
+	svc, err := setupServices(ctx, cfg, infra, logger)
+	if err != nil {
+		logger.WithError(err).Fatal("Service setup failed")
+	}
+
+	// Start HTTP server
+	srv, err := startServer(cfg, svc, logger)
+	if err != nil {
+		logger.WithError(err).Fatal("Server startup failed")
+	}
+
+	// Wait for interrupt signal
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	sig := <-sigChan
+
+	logger.WithField("signal", sig.String()).Info("Received shutdown signal")
+
+	// Cancel application context to signal all services to stop
+	cancel()
+
+	// Perform graceful shutdown
+	shutdownGracefully(cfg, srv, svc, infra, logger)
+}
+
+// setupLogger creates and configures the application logger.
+func setupLogger() *logrus.Logger {
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.TextFormatter{
 		ForceColors:   true,
 		FullTimestamp: true,
 	})
 
-	// Log startup with version info
 	logger.WithFields(logrus.Fields{
 		"version":    version.Short(),
 		"git_commit": version.GitCommit,
 		"build_date": version.BuildDate,
 	}).Info("Starting...")
 
-	// Load configuration
-	cfg, err := config.Load(*configPath)
+	return logger
+}
+
+// loadAndValidateConfig loads the configuration file and validates it.
+func loadAndValidateConfig(configPath string, logger *logrus.Logger) (*config.Config, error) {
+	cfg, err := config.Load(configPath)
 	if err != nil {
-		logger.WithError(err).Fatal("Failed to load configuration")
+		return nil, fmt.Errorf("load config: %w", err)
 	}
 
 	// Set log level from config
@@ -55,8 +121,8 @@ func main() {
 	logger.SetLevel(level)
 
 	// Validate configuration
-	if verr := cfg.Validate(); verr != nil {
-		logger.WithError(verr).Fatal("Invalid configuration")
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
 	}
 
 	logger.WithFields(logrus.Fields{
@@ -64,11 +130,11 @@ func main() {
 		"log_level": cfg.Server.LogLevel,
 	}).Info("Configuration loaded")
 
-	// Create a cancellable context for the application lifecycle
-	// This will be cancelled on shutdown to signal all services to stop
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	return cfg, nil
+}
 
+// setupInfrastructure initializes Redis and leader election.
+func setupInfrastructure(ctx context.Context, cfg *config.Config, logger *logrus.Logger) (*infrastructure, error) {
 	// Initialize Redis client
 	redisClient := redis.NewClient(logger, redis.Config{
 		Address:      cfg.Redis.Address,
@@ -80,8 +146,8 @@ func main() {
 		PoolSize:     cfg.Redis.PoolSize,
 	})
 
-	if startErr := redisClient.Start(ctx); startErr != nil {
-		logger.WithError(startErr).Fatal("Failed to start Redis client")
+	if err := redisClient.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start Redis client: %w", err)
 	}
 
 	// Initialize leader election
@@ -92,64 +158,75 @@ func main() {
 		RetryInterval: cfg.Leader.RetryInterval,
 	}, redisClient)
 
-	if startErr := elector.Start(ctx); startErr != nil {
-		logger.WithError(startErr).Fatal("Failed to start leader election")
+	if err := elector.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start leader election: %w", err)
 	}
 
+	return &infrastructure{
+		redisClient: redisClient,
+		elector:     elector,
+	}, nil
+}
+
+// setupServices initializes cartographoor and bounds services.
+func setupServices(
+	ctx context.Context,
+	cfg *config.Config,
+	infra *infrastructure,
+	logger *logrus.Logger,
+) (*services, error) {
+	svc := &services{}
+
 	// Create cartographoor service
-	var cartographoorProvider cartographoor.Provider
-
-	var cartographoorRedisProvider *cartographoor.RedisProvider
-
-	var cartographoorSvc *cartographoor.Service
-
 	if cfg.Cartographoor.Enabled {
-		var cerr error
+		var err error
 
 		// Create upstream service (fetches from Cartographoor API)
-		cartographoorSvc, cerr = cartographoor.New(&cfg.Cartographoor, logger)
-		if cerr != nil {
-			logger.WithError(cerr).Fatal("Failed to create cartographoor service")
+		svc.cartographoorSvc, err = cartographoor.New(&cfg.Cartographoor, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create cartographoor service: %w", err)
 		}
 
 		// Start upstream service
-		if serr := cartographoorSvc.Start(ctx); serr != nil {
-			logger.WithError(serr).Fatal("Failed to start cartographoor service")
+		if err := svc.cartographoorSvc.Start(ctx); err != nil {
+			return nil, fmt.Errorf("failed to start cartographoor service: %w", err)
 		}
 
 		// Wrap with Redis provider (mandatory)
 		provider := cartographoor.NewRedisProvider(
 			logger,
 			cfg.Cartographoor,
-			redisClient,
-			elector,
-			cartographoorSvc,
+			infra.redisClient,
+			infra.elector,
+			svc.cartographoorSvc,
 		)
 
 		var ok bool
 
-		cartographoorRedisProvider, ok = provider.(*cartographoor.RedisProvider)
+		svc.cartographoorRedisProvider, ok = provider.(*cartographoor.RedisProvider)
 		if !ok {
-			logger.Fatal("Failed to assert cartographoor provider type")
+			return nil, fmt.Errorf("failed to assert cartographoor provider type")
 		}
 
-		if startErr := cartographoorRedisProvider.Start(ctx); startErr != nil {
-			logger.WithError(startErr).Fatal("Failed to start Redis cartographoor provider")
+		if err := svc.cartographoorRedisProvider.Start(ctx); err != nil {
+			return nil, fmt.Errorf("failed to start Redis cartographoor provider: %w", err)
 		}
 
-		cartographoorProvider = cartographoorRedisProvider
+		svc.cartographoorProvider = svc.cartographoorRedisProvider
 
 		logger.Info("Cartographoor service started")
 	}
 
 	// Create upstream bounds service
-	upstreamBounds, err := bounds.New(logger, cfg, cartographoorProvider)
+	var err error
+
+	svc.upstreamBounds, err = bounds.New(logger, cfg, svc.cartographoorProvider)
 	if err != nil {
-		logger.WithError(err).Fatal("Failed to create bounds service")
+		return nil, fmt.Errorf("failed to create bounds service: %w", err)
 	}
 
-	if startErr := upstreamBounds.Start(ctx); startErr != nil {
-		logger.WithError(startErr).Fatal("Failed to start bounds service")
+	if err := svc.upstreamBounds.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start bounds service: %w", err)
 	}
 
 	// Wrap with Redis provider
@@ -157,35 +234,40 @@ func main() {
 		logger,
 		bounds.Config{
 			RefreshInterval: cfg.Bounds.RefreshInterval,
-			PageSize:        500, // Hardcoded for now, can be made configurable later
+			PageSize:        500,
 			BoundsTTL:       cfg.Bounds.BoundsTTL,
 		},
-		redisClient,
-		elector,
-		upstreamBounds,
+		infra.redisClient,
+		infra.elector,
+		svc.upstreamBounds,
 	)
 
-	boundsRedisProvider, ok := boundsProv.(*bounds.RedisProvider)
+	var ok bool
+
+	svc.boundsRedisProvider, ok = boundsProv.(*bounds.RedisProvider)
 	if !ok {
-		logger.Fatal("Failed to assert bounds provider type")
+		return nil, fmt.Errorf("failed to assert bounds provider type")
 	}
 
-	if startErr := boundsRedisProvider.Start(ctx); startErr != nil {
-		logger.WithError(startErr).Fatal("Failed to start Redis bounds provider")
+	if err := svc.boundsRedisProvider.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start Redis bounds provider: %w", err)
 	}
 
-	var boundsProvider bounds.Provider = boundsRedisProvider
+	svc.boundsProvider = svc.boundsRedisProvider
 
 	logger.Info("Bounds service started")
 
 	// Note: RedisProvider.Start() blocks until Redis has data (with 30s timeout)
 	// If we reach here, Redis is guaranteed to be populated
-	// If timeout occurred, Start() would have returned error and we'd have Fatal'd above
 
-	// Create server
-	srv, err := server.New(logger, cfg, cartographoorProvider, boundsProvider)
+	return svc, nil
+}
+
+// startServer creates and starts the HTTP server in a goroutine.
+func startServer(cfg *config.Config, svc *services, logger *logrus.Logger) (*server.Server, error) {
+	srv, err := server.New(logger, cfg, svc.cartographoorProvider, svc.boundsProvider)
 	if err != nil {
-		logger.WithError(err).Fatal("Failed to create server")
+		return nil, fmt.Errorf("failed to create server: %w", err)
 	}
 
 	// Start server in goroutine
@@ -197,30 +279,28 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	sig := <-sigChan
+	return srv, nil
+}
 
-	logger.WithField("signal", sig.String()).Info("Received shutdown signal")
-
-	// Graceful shutdown
+// shutdownGracefully performs graceful shutdown of all services.
+// Shutdown order:
+// 1. HTTP server (stop accepting requests).
+// 2. Redis providers (stop background loops that use Redis).
+// 3. Upstream services (stop their background loops).
+// 4. Leader election (release leadership lock).
+// 5. Redis client (close connections).
+func shutdownGracefully(
+	cfg *config.Config,
+	srv *server.Server,
+	svc *services,
+	infra *infrastructure,
+	logger *logrus.Logger,
+) {
 	logger.Info("Initiating graceful shutdown...")
 
-	// Cancel the application context to signal all services to stop
-	// This triggers ctx.Done() in all service refresh loops
-	cancel()
-
-	// Create a timeout context for the shutdown process itself
+	// Create a timeout context for the shutdown process
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer shutdownCancel()
-
-	// Shutdown order (reverse of startup dependencies):
-	// 1. HTTP server (stop accepting requests)
-	// 2. Redis providers (stop background loops that use Redis)
-	// 3. Upstream services (stop their background loops)
-	// 4. Leader election (release leadership lock)
-	// 5. Redis client (close connections)
 
 	// Stop HTTP server
 	if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -228,34 +308,38 @@ func main() {
 	}
 
 	// Stop Redis providers
-	if cartographoorRedisProvider != nil {
-		if err := cartographoorRedisProvider.Stop(); err != nil {
+	if svc.cartographoorRedisProvider != nil {
+		if err := svc.cartographoorRedisProvider.Stop(); err != nil {
 			logger.WithError(err).Error("Error stopping cartographoor Redis provider")
 		}
 	}
 
-	if err := boundsRedisProvider.Stop(); err != nil {
-		logger.WithError(err).Error("Error stopping bounds Redis provider")
+	if svc.boundsRedisProvider != nil {
+		if err := svc.boundsRedisProvider.Stop(); err != nil {
+			logger.WithError(err).Error("Error stopping bounds Redis provider")
+		}
 	}
 
 	// Stop upstream services
-	if cartographoorSvc != nil {
-		if err := cartographoorSvc.Stop(); err != nil {
+	if svc.cartographoorSvc != nil {
+		if err := svc.cartographoorSvc.Stop(); err != nil {
 			logger.WithError(err).Error("Error stopping cartographoor service")
 		}
 	}
 
-	if err := upstreamBounds.Stop(); err != nil {
-		logger.WithError(err).Error("Error stopping bounds service")
+	if svc.upstreamBounds != nil {
+		if err := svc.upstreamBounds.Stop(); err != nil {
+			logger.WithError(err).Error("Error stopping bounds service")
+		}
 	}
 
 	// Stop leader election (releases lock)
-	if err := elector.Stop(); err != nil {
+	if err := infra.elector.Stop(); err != nil {
 		logger.WithError(err).Error("Error stopping leader election")
 	}
 
 	// Stop Redis client (closes connections)
-	if err := redisClient.Stop(); err != nil {
+	if err := infra.redisClient.Stop(); err != nil {
 		logger.WithError(err).Error("Error stopping Redis client")
 	}
 

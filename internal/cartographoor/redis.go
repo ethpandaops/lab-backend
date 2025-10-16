@@ -23,13 +23,12 @@ type RedisProvider struct {
 	cfg      Config
 	redis    redis.Client
 	elector  leader.Elector
-	upstream *Service // Stateless fetcher for retrieving upstream data
+	upstream *Service
 	done     chan struct{}
 	wg       sync.WaitGroup
 }
 
 // NewRedisProvider creates a Redis-backed cartographoor provider.
-// upstream is the stateless Service that fetches from Cartographoor API.
 func NewRedisProvider(
 	log logrus.FieldLogger,
 	cfg Config,
@@ -73,8 +72,7 @@ func (r *RedisProvider) Start(ctx context.Context) error {
 		select {
 		case <-readinessCtx.Done():
 			return fmt.Errorf(
-				"readiness timeout: no cartographoor data in Redis after %v - "+
-					"leader may have failed to fetch or no leader elected",
+				"readiness timeout: no cartographoor data in Redis after %v",
 				readinessTimeout,
 			)
 		case <-ticker.C:

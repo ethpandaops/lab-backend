@@ -23,13 +23,12 @@ type RedisProvider struct {
 	cfg      Config
 	redis    redis.Client
 	elector  leader.Elector
-	upstream *Service // Stateless fetcher for retrieving upstream data
+	upstream *Service
 	done     chan struct{}
 	wg       sync.WaitGroup
 }
 
 // NewRedisProvider creates a Redis-backed bounds provider.
-// upstream is the stateless Service that fetches from Xatu CBT APIs.
 func NewRedisProvider(
 	log logrus.FieldLogger,
 	cfg Config,
@@ -73,8 +72,7 @@ func (r *RedisProvider) Start(ctx context.Context) error {
 		select {
 		case <-readinessCtx.Done():
 			return fmt.Errorf(
-				"readiness timeout: no bounds data in Redis after %v - "+
-					"leader may have failed to fetch or no leader elected",
+				"readiness timeout: no bounds data in Redis after %v",
 				readinessTimeout,
 			)
 		case <-ticker.C:
@@ -103,9 +101,7 @@ func (r *RedisProvider) Stop() error {
 
 // GetBounds returns bounds for a specific network by reading directly from Redis.
 func (r *RedisProvider) GetBounds(ctx context.Context, network string) (*BoundsData, bool) {
-	key := redisKeyPrefix + network
-
-	data, err := r.redis.Get(ctx, key)
+	data, err := r.redis.Get(ctx, fmt.Sprintf("%s%s", redisKeyPrefix, network))
 	if err != nil {
 		r.log.WithError(err).WithField("network", network).Debug("Failed to get bounds from Redis")
 
@@ -137,7 +133,7 @@ func (r *RedisProvider) GetAllBounds(ctx context.Context) map[string]*BoundsData
 	result := make(map[string]*BoundsData, len(keys))
 
 	for _, key := range keys {
-		network := key[len(redisKeyPrefix):] // Strip prefix to get network name
+		network := key[len(redisKeyPrefix):]
 
 		data, err := r.redis.Get(ctx, key)
 		if err != nil {
@@ -165,10 +161,10 @@ func (r *RedisProvider) refreshLoop(ctx context.Context) {
 	ticker := time.NewTicker(r.cfg.RefreshInterval)
 	defer ticker.Stop()
 
-	// Give leader election a moment to settle (it tries immediately on boot)
+	// Give leader election a moment to settle.
 	time.Sleep(100 * time.Millisecond)
 
-	// Immediate refresh on startup if leader
+	// Immediate refresh on startup if leader.
 	if r.elector.IsLeader() {
 		r.refreshData(ctx)
 	}
@@ -180,11 +176,10 @@ func (r *RedisProvider) refreshLoop(ctx context.Context) {
 		case <-r.done:
 			return
 		case <-ticker.C:
-			// Only leader refreshes from upstream
+			// Only leader refreshes from upstream.
 			if r.elector.IsLeader() {
 				r.refreshData(ctx)
 			}
-			// Followers do nothing - they read directly from Redis on API calls
 		}
 	}
 }
@@ -192,11 +187,11 @@ func (r *RedisProvider) refreshLoop(ctx context.Context) {
 func (r *RedisProvider) refreshData(ctx context.Context) {
 	r.log.Debug("Refreshing bounds data from upstream")
 
-	// Fetch fresh data from upstream (no caching, just HTTP calls)
+	// Fetch fresh data from upstream.
 	allBounds, err := r.upstream.FetchBounds(ctx)
 	if err != nil {
-		r.log.WithError(err).Error("Failed to fetch bounds from upstream")
 		// Continue with partial data if available
+		r.log.WithError(err).Error("Failed to fetch bounds from upstream")
 	}
 
 	if len(allBounds) == 0 {
@@ -214,8 +209,10 @@ func (r *RedisProvider) refreshData(ctx context.Context) {
 			continue
 		}
 
-		key := redisKeyPrefix + network
-		ttl := r.cfg.BoundsTTL
+		var (
+			key = redisKeyPrefix + network
+			ttl = r.cfg.BoundsTTL
+		)
 
 		if err := r.redis.Set(ctx, key, string(data), ttl); err != nil {
 			r.log.WithError(err).WithField("network", network).Error("Failed to store bounds in Redis")

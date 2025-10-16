@@ -47,20 +47,6 @@ func (n *NetworkConfig) Validate() error {
 	return nil
 }
 
-// Validate validates experiment configuration.
-func (ec *ExperimentConfig) Validate(validNetworks map[string]bool) error {
-	for expName, settings := range ec.Experiments {
-		// Validate that specified networks exist
-		for _, networkName := range settings.Networks {
-			if !validNetworks[networkName] {
-				return fmt.Errorf("experiment %s references unknown network: %s", expName, networkName)
-			}
-		}
-	}
-
-	return nil
-}
-
 // GetNetworkByName looks up a network by name.
 func (c *Config) GetNetworkByName(name string) (*NetworkConfig, error) {
 	for i := range c.Networks {

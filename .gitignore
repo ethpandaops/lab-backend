@@ -27,4 +27,4 @@ tmp/
 # Frontend assets (symlink or embedded)
 web/frontend/*
 !web/frontend/.gitkeep
-!web/frontend/index.html
+!web/frontend/.placeholder.html

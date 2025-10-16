@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ethpandaops/lab-backend/internal/api"
+	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	"github.com/ethpandaops/lab-backend/internal/config"
 	"github.com/ethpandaops/lab-backend/internal/frontend"
 	"github.com/ethpandaops/lab-backend/internal/handlers"
@@ -20,11 +21,16 @@ import (
 // Server represents the HTTP server.
 type Server struct {
 	httpServer *http.Server
+	proxy      *proxy.Proxy
 	logger     logrus.FieldLogger
 }
 
 // New creates a new HTTP server with all routes and middleware.
-func New(cfg *config.Config, logger logrus.FieldLogger) (*Server, error) {
+func New(
+	logger logrus.FieldLogger,
+	cfg *config.Config,
+	cartographoorSvc *cartographoor.Service,
+) (*Server, error) {
 	mux := http.NewServeMux()
 
 	// Health endpoint (no middleware needed for simple health check)
@@ -36,18 +42,27 @@ func New(cfg *config.Config, logger logrus.FieldLogger) (*Server, error) {
 	logger.Info("Registered route: GET /metrics")
 
 	// Config API (must come before wildcard proxy route)
-	configHandler := api.NewConfigHandler(cfg)
+	var provider cartographoor.Provider
+	if cartographoorSvc != nil {
+		provider = cartographoorSvc
+	}
+
+	configHandler := api.NewConfigHandler(cfg, provider)
 	mux.Handle("GET /api/v1/config", configHandler)
 	logger.Info("Registered route: GET /api/v1/config")
 
 	// Network-based proxy for all other API routes
-	proxyHandler, err := proxy.New(cfg, logger.WithField("component", "proxy"))
+	if cartographoorSvc != nil {
+		provider = cartographoorSvc
+	}
+
+	proxyHandler, err := proxy.New(logger.WithField("component", "proxy"), cfg, provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create proxy: %w", err)
 	}
 
 	mux.Handle("/api/v1/", proxyHandler)
-	logger.WithField("networks", len(cfg.Networks)).Info("Registered proxy routes")
+	logger.WithField("networks", proxyHandler.NetworkCount()).Info("Registered proxy routes")
 
 	// Build config data for frontend injection
 	configData := buildConfigData(cfg)
@@ -60,7 +75,7 @@ func New(cfg *config.Config, logger logrus.FieldLogger) (*Server, error) {
 
 	// Mount frontend as catch-all (must be last)
 	mux.Handle("/", frontendHandler)
-	logger.Info("Registered route: / (frontend catch-all)")
+	logger.Info("Registered route: /")
 
 	// Apply middleware chain: Logging → Metrics → CORS → Recovery
 	handler := middleware.Logging(logger)(mux)
@@ -80,6 +95,7 @@ func New(cfg *config.Config, logger logrus.FieldLogger) (*Server, error) {
 
 	return &Server{
 		httpServer: httpServer,
+		proxy:      proxyHandler,
 		logger:     logger,
 	}, nil
 }
@@ -94,6 +110,13 @@ func (s *Server) Start() error {
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Info("Shutting down HTTP server")
+
+	// Shutdown proxy first (stops periodic sync)
+	if s.proxy != nil {
+		if err := s.proxy.Shutdown(); err != nil {
+			s.logger.WithError(err).Error("Error shutting down proxy")
+		}
+	}
 
 	return s.httpServer.Shutdown(ctx)
 }

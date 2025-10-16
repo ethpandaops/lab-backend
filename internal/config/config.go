@@ -6,14 +6,16 @@ import (
 	"os"
 	"time"
 
+	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	"gopkg.in/yaml.v3"
 )
 
 // Config represents the complete application configuration.
 type Config struct {
-	Server      ServerConfig     `yaml:"server"`
-	Networks    []NetworkConfig  `yaml:"networks"`
-	Experiments ExperimentConfig `yaml:"experiments"`
+	Server        ServerConfig         `yaml:"server"`
+	Networks      []NetworkConfig      `yaml:"networks"`
+	Experiments   ExperimentConfig     `yaml:"experiments"`
+	Cartographoor cartographoor.Config `yaml:"cartographoor"`
 }
 
 // ServerConfig contains HTTP server settings.
@@ -76,10 +78,11 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate networks
-	if len(c.Networks) == 0 {
-		return fmt.Errorf("at least one network must be configured")
+	if len(c.Networks) == 0 && !c.Cartographoor.Enabled {
+		return fmt.Errorf("at least one network must be configured when cartographoor is disabled")
 	}
 
+	// Validate individual network configs if any are provided
 	networkNames := make(map[string]bool)
 
 	for i, network := range c.Networks {
@@ -95,9 +98,9 @@ func (c *Config) Validate() error {
 		networkNames[network.Name] = true
 	}
 
-	// Validate experiments
-	if err := c.Experiments.Validate(networkNames); err != nil {
-		return fmt.Errorf("experiments: %w", err)
+	// Validate cartographoor config
+	if err := c.Cartographoor.Validate(); err != nil {
+		return fmt.Errorf("cartographoor: %w", err)
 	}
 
 	return nil

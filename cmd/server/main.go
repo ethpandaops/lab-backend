@@ -10,6 +10,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	"github.com/ethpandaops/lab-backend/internal/config"
 	"github.com/ethpandaops/lab-backend/internal/server"
 	"github.com/ethpandaops/lab-backend/internal/version"
@@ -60,8 +61,28 @@ func main() {
 		"log_level": cfg.Server.LogLevel,
 	}).Info("Configuration loaded")
 
+	// Create cartographoor service
+	var cartographoorSvc *cartographoor.Service
+
+	if cfg.Cartographoor.Enabled {
+		var cerr error
+
+		cartographoorSvc, cerr = cartographoor.New(&cfg.Cartographoor, logger)
+		if cerr != nil {
+			logger.WithError(cerr).Fatal("Failed to create cartographoor service")
+		}
+
+		// Start cartographoor service
+		ctx := context.Background()
+		if serr := cartographoorSvc.Start(ctx); serr != nil {
+			logger.WithError(serr).Fatal("Failed to start cartographoor service")
+		}
+
+		logger.Info("Cartographoor service started")
+	}
+
 	// Create server
-	srv, err := server.New(cfg, logger)
+	srv, err := server.New(logger, cfg, cartographoorSvc)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to create server")
 	}
@@ -87,6 +108,13 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
+
+	// Stop cartographoor service
+	if cartographoorSvc != nil {
+		if err := cartographoorSvc.Stop(); err != nil {
+			logger.WithError(err).Error("Error stopping cartographoor service")
+		}
+	}
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.WithError(err).Error("Error during shutdown")

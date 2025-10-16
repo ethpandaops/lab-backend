@@ -11,46 +11,48 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	"github.com/ethpandaops/lab-backend/internal/config"
 )
 
 // Proxy manages network-based reverse proxying.
 type Proxy struct {
-	config  *config.Config
-	proxies map[string]*httputil.ReverseProxy
-	logger  logrus.FieldLogger
-	mu      sync.RWMutex
+	config   *config.Config
+	proxies  map[string]*httputil.ReverseProxy
+	logger   logrus.FieldLogger
+	mu       sync.RWMutex
+	provider cartographoor.Provider
+
+	// Periodic sync lifecycle
+	syncTicker *time.Ticker
+	stopChan   chan struct{}
+	wg         sync.WaitGroup
 }
 
 // New creates a new proxy service with pre-configured ReverseProxy instances.
-func New(cfg *config.Config, logger logrus.FieldLogger) (*Proxy, error) {
+func New(
+	logger logrus.FieldLogger,
+	cfg *config.Config,
+	provider cartographoor.Provider,
+) (*Proxy, error) {
 	p := &Proxy{
-		config:  cfg,
-		proxies: make(map[string]*httputil.ReverseProxy, len(cfg.Networks)),
-		logger:  logger.WithField("component", "proxy"),
+		config:   cfg,
+		proxies:  make(map[string]*httputil.ReverseProxy),
+		logger:   logger.WithField("component", "proxy"),
+		provider: provider,
+		stopChan: make(chan struct{}),
 	}
 
-	// Create reverse proxy for each enabled network
-	for _, network := range cfg.Networks {
-		if !network.Enabled {
-			p.logger.WithFields(logrus.Fields{
-				"network": network.Name,
-				"reason":  "disabled",
-			}).Debug("Skipping disabled network")
+	// Initial sync: build merged network list and create proxies
+	// Uses cartographoor-first, config-overlay approach.
+	if err := p.SyncNetworks(); err != nil {
+		// Don't error - proxy still usable with whatever loaded
+		p.logger.WithError(err).Warn("Initial network sync failed")
+	}
 
-			continue
-		}
-
-		proxy, err := p.createReverseProxy(network.TargetURL, network.Name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create proxy for network %s: %w", network.Name, err)
-		}
-
-		p.proxies[network.Name] = proxy
-		p.logger.WithFields(logrus.Fields{
-			"network":    network.Name,
-			"target_url": network.TargetURL,
-		}).Info("Network proxy created")
+	// Start periodic sync if provider available
+	if provider != nil {
+		p.startPeriodicSync()
 	}
 
 	return p, nil
@@ -71,7 +73,6 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use RLock for reading proxy map (allows concurrent reads)
 	p.mu.RLock()
 	proxy, exists := p.proxies[network]
 	p.mu.RUnlock()
@@ -167,14 +168,204 @@ func (p *Proxy) createReverseProxy(targetURL string, networkName string) (*httpu
 	return proxy, nil
 }
 
-// === Dynamic Network Management Methods (Phase 2 Ready) ===
-// These methods enable runtime network updates for future cartographer integration.
-// Phase 1 implementation: These methods are implemented but not called.
-// Phase 2 implementation: cartographer will call these when networks change.
+// startPeriodicSync starts the background sync goroutine.
+func (p *Proxy) startPeriodicSync() {
+	// Use cartographoor refresh interval for proxy sync
+	// Default to 5 minutes if not configured
+	interval := p.config.Cartographoor.RefreshInterval
+	if interval == 0 {
+		interval = 5 * time.Minute
+	}
+
+	// Offset proxy sync by 30 seconds after cartographoor fetch
+	// This ensures proxy syncs with fresh data from cartographoor
+	const syncOffset = 30 * time.Second
+
+	p.syncTicker = time.NewTicker(interval)
+	p.wg.Add(1)
+
+	go p.syncLoop(syncOffset)
+
+	p.logger.WithFields(logrus.Fields{
+		"refresh_interval": interval,
+		"sync_offset":      syncOffset,
+	}).Info("Started periodic network sync")
+}
+
+// stopPeriodicSync stops the background sync goroutine.
+func (p *Proxy) stopPeriodicSync() {
+	if p.syncTicker != nil {
+		close(p.stopChan)
+
+		p.syncTicker.Stop()
+		p.wg.Wait()
+
+		p.logger.Info("Stopped periodic network sync")
+	}
+}
+
+// syncLoop runs the periodic sync in background.
+func (p *Proxy) syncLoop(offset time.Duration) {
+	defer p.wg.Done()
+
+	// Wait for offset before starting sync cycle
+	// This allows cartographoor to fetch fresh data first
+	if offset > 0 {
+		select {
+		case <-time.After(offset):
+			// Initial offset wait complete, proceed to sync
+			if err := p.SyncNetworks(); err != nil {
+				p.logger.WithError(err).Error("Periodic network sync failed")
+			}
+		case <-p.stopChan:
+			return
+		}
+	}
+
+	for {
+		select {
+		case <-p.syncTicker.C:
+			if err := p.SyncNetworks(); err != nil {
+				p.logger.WithError(err).Error("Periodic network sync failed")
+			}
+		case <-p.stopChan:
+			return
+		}
+	}
+}
+
+// SyncNetworks syncs proxy networks using cartographoor-first, config-overlay approach.
+func (p *Proxy) SyncNetworks() error {
+	// Build merged network list (cartographoor + config overlay)
+	desiredNetworks := p.buildMergedNetworkList()
+
+	p.logger.WithField("count", len(desiredNetworks)).Debug("Syncing networks from merged config")
+
+	// Track which networks should exist
+	desiredNames := make(map[string]bool)
+
+	// Add or update networks from merged list
+	for name, networkCfg := range desiredNetworks {
+		// Only process enabled networks
+		if !networkCfg.Enabled {
+			p.logger.WithField("network", name).Debug("Network disabled, skipping")
+
+			continue
+		}
+
+		desiredNames[name] = true
+
+		// Check if network already exists
+		p.mu.RLock()
+		_, exists := p.proxies[name]
+		p.mu.RUnlock()
+
+		if exists {
+			// Update existing network
+			if err := p.UpdateNetwork(networkCfg); err != nil {
+				p.logger.WithError(err).WithField("network", name).Error("Failed to update network")
+			}
+		} else {
+			// Add new network
+			if err := p.AddNetwork(networkCfg); err != nil {
+				p.logger.WithError(err).WithField("network", name).Error("Failed to add network")
+			}
+		}
+	}
+
+	// Remove networks that are no longer desired
+	p.mu.RLock()
+
+	currentNetworks := make([]string, 0, len(p.proxies))
+	for name := range p.proxies {
+		currentNetworks = append(currentNetworks, name)
+	}
+
+	p.mu.RUnlock()
+
+	for _, name := range currentNetworks {
+		if !desiredNames[name] {
+			p.logger.WithField("network", name).Info("Removing network no longer in config")
+			p.RemoveNetwork(name)
+		}
+	}
+
+	return nil
+}
+
+// buildMergedNetworkList creates merged network list: cartographoor base + config.yaml overlay.
+func (p *Proxy) buildMergedNetworkList() map[string]config.NetworkConfig {
+	networks := make(map[string]config.NetworkConfig)
+
+	// Step 1: Start with cartographoor networks (if provider available)
+	if p.provider != nil {
+		cartographoorNets := p.provider.GetActiveNetworks()
+		for name, net := range cartographoorNets {
+			networks[name] = config.NetworkConfig{
+				Name:      net.Name,
+				Enabled:   true, // cartographoor "active" networks enabled by default.
+				TargetURL: net.TargetURL,
+			}
+		}
+
+		p.logger.WithField("cartographoor_count", len(cartographoorNets)).Debug("Loaded cartographoor networks")
+	}
+
+	// Step 2: Apply config.yaml overrides and additions
+	for _, configNet := range p.config.Networks {
+		if existing, exists := networks[configNet.Name]; exists {
+			// Override cartographoor network settings
+			existing.Enabled = configNet.Enabled // can disable cartographoor network
+			if configNet.TargetURL != "" {
+				existing.TargetURL = configNet.TargetURL // can override URL
+			}
+
+			networks[configNet.Name] = existing
+
+			p.logger.WithFields(logrus.Fields{
+				"network": configNet.Name,
+				"enabled": configNet.Enabled,
+			}).Debug("Applied config override for cartographoor network")
+		} else {
+			// Add static network (not in cartographoor)
+			networks[configNet.Name] = configNet
+			if configNet.Enabled {
+				p.logger.WithField("network", configNet.Name).Debug("Added static network from config")
+			}
+		}
+	}
+
+	return networks
+}
+
+// NetworkCount returns the number of active network proxies.
+func (p *Proxy) NetworkCount() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	return len(p.proxies)
+}
+
+// Shutdown stops the proxy and cleans up resources.
+func (p *Proxy) Shutdown() error {
+	p.logger.Info("Shutting down proxy")
+	p.stopPeriodicSync()
+
+	return nil
+}
 
 // AddNetwork dynamically adds a new network proxy at runtime.
-// Used by cartographer in Phase 2 when new devnets are discovered.
+// Used by cartographoor when new devnets are discovered.
 func (p *Proxy) AddNetwork(network config.NetworkConfig) error {
+	// Check backend health before adding
+	healthy, _ := p.checkHealth(network.TargetURL)
+	if !healthy {
+		p.logger.WithFields(logrus.Fields{
+			"network":    network.Name,
+			"target_url": network.TargetURL,
+		}).Warn("Backend unhealthy for network")
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -185,9 +376,16 @@ func (p *Proxy) AddNetwork(network config.NetworkConfig) error {
 	}
 
 	p.proxies[network.Name] = proxy
+
+	healthStatus := "healthy"
+	if !healthy {
+		healthStatus = "unhealthy"
+	}
+
 	p.logger.WithFields(logrus.Fields{
-		"network":    network.Name,
-		"target_url": network.TargetURL,
+		"network":       network.Name,
+		"target_url":    network.TargetURL,
+		"health_status": healthStatus,
 	}).Info("Network proxy added")
 
 	return nil
@@ -207,6 +405,15 @@ func (p *Proxy) RemoveNetwork(networkName string) {
 // UpdateNetwork dynamically updates a network proxy at runtime.
 // Used by cartographer in Phase 2 when network URLs change.
 func (p *Proxy) UpdateNetwork(network config.NetworkConfig) error {
+	// Check backend health before updating
+	healthy, _ := p.checkHealth(network.TargetURL)
+	if !healthy {
+		p.logger.WithFields(logrus.Fields{
+			"network":    network.Name,
+			"target_url": network.TargetURL,
+		}).Warn("Backend unhealthy for network")
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -217,12 +424,54 @@ func (p *Proxy) UpdateNetwork(network config.NetworkConfig) error {
 	}
 
 	p.proxies[network.Name] = proxy
+
+	healthStatus := "healthy"
+	if !healthy {
+		healthStatus = "unhealthy"
+	}
+
 	p.logger.WithFields(logrus.Fields{
-		"network":    network.Name,
-		"target_url": network.TargetURL,
+		"network":       network.Name,
+		"target_url":    network.TargetURL,
+		"health_status": healthStatus,
 	}).Info("Network proxy updated")
 
 	return nil
+}
+
+// checkHealth checks if a backend is healthy by hitting its /health endpoint.
+func (p *Proxy) checkHealth(targetURL string) (bool, error) {
+	// Parse target URL to construct health endpoint
+	baseURL, err := url.Parse(targetURL)
+	if err != nil {
+		return false, fmt.Errorf("invalid target URL: %w", err)
+	}
+
+	// Build health check URL (replace /api/v1 path with /health)
+	healthURL := &url.URL{
+		Scheme: baseURL.Scheme,
+		Host:   baseURL.Host,
+		Path:   "/health",
+	}
+
+	// Create HTTP client with short timeout for health checks
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	// Perform health check
+	resp, err := client.Get(healthURL.String())
+	if err != nil {
+		return false, fmt.Errorf("health check request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for 200 OK status
+	if resp.StatusCode != http.StatusOK {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // writeJSONError writes a JSON error response.

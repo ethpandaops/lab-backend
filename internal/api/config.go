@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	"github.com/ethpandaops/lab-backend/internal/config"
 )
 
@@ -40,12 +41,16 @@ type TableBounds struct {
 
 // ConfigHandler handles /api/v1/config requests.
 type ConfigHandler struct {
-	config *config.Config
+	config   *config.Config
+	provider cartographoor.Provider
 }
 
 // NewConfigHandler creates a new config API handler.
-func NewConfigHandler(cfg *config.Config) *ConfigHandler {
-	return &ConfigHandler{config: cfg}
+func NewConfigHandler(cfg *config.Config, provider cartographoor.Provider) *ConfigHandler {
+	return &ConfigHandler{
+		config:   cfg,
+		provider: provider,
+	}
 }
 
 // ServeHTTP implements http.Handler interface.
@@ -78,10 +83,31 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // buildNetworks converts config.NetworkConfig to NetworkInfo slice.
 func (h *ConfigHandler) buildNetworks() []NetworkInfo {
-	networks := make([]NetworkInfo, 0, len(h.config.Networks))
+	networks := make([]NetworkInfo, 0)
+
+	// Add cartographoor networks if available
+	if h.provider != nil {
+		cartographoorNets := h.provider.GetActiveNetworks()
+		for _, net := range cartographoorNets {
+			networks = append(networks, NetworkInfo{
+				Name:        net.Name,
+				DisplayName: net.DisplayName,
+				Enabled:     true,
+				Status:      net.Status,
+			})
+		}
+	}
+
+	// Add static config networks (avoid duplicates)
+	seenNetworks := make(map[string]bool)
+	for _, ni := range networks {
+		seenNetworks[ni.Name] = true
+	}
 
 	for _, nc := range h.config.Networks {
-		networks = append(networks, buildNetworkInfo(nc))
+		if !seenNetworks[nc.Name] {
+			networks = append(networks, buildNetworkInfo(nc))
+		}
 	}
 
 	return networks

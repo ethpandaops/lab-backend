@@ -42,30 +42,30 @@ func main() {
 	// Setup logger
 	logger := setupLogger()
 
-	// Load and validate configuration
-	cfg, err := loadAndValidateConfig(*configPath, logger)
-	if err != nil {
-		logger.WithError(err).Fatal("Configuration error")
-	}
-
 	// Create application context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Load and validate configuration
+	cfg, err := loadAndValidateConfig(ctx, logger, *configPath)
+	if err != nil {
+		logger.WithError(err).Fatal("Configuration error")
+	}
+
 	// Setup infrastructure (redis, leader election, etc)
-	infra, err := setupInfrastructure(ctx, cfg, logger)
+	infra, err := setupInfrastructure(ctx, logger, cfg)
 	if err != nil {
 		logger.WithError(err).Fatal("Infrastructure setup failed")
 	}
 
 	// Setup services (cartographoor, bounds)
-	svc, err := setupServices(ctx, cfg, infra, logger)
+	svc, err := setupServices(ctx, logger, cfg, infra)
 	if err != nil {
 		logger.WithError(err).Fatal("Service setup failed")
 	}
 
 	// Start HTTP server
-	srv, err := startServer(cfg, svc, logger)
+	srv, err := startServer(cfg, logger, svc)
 	if err != nil {
 		logger.WithError(err).Fatal("Server startup failed")
 	}
@@ -81,7 +81,7 @@ func main() {
 	cancel()
 
 	// Perform graceful shutdown
-	shutdownGracefully(cfg, srv, svc, infra, logger)
+	shutdownGracefully(logger, cfg, srv, svc, infra)
 }
 
 // setupLogger creates and configures the application logger.
@@ -102,7 +102,11 @@ func setupLogger() *logrus.Logger {
 }
 
 // loadAndValidateConfig loads the configuration file and validates it.
-func loadAndValidateConfig(configPath string, logger *logrus.Logger) (*config.Config, error) {
+func loadAndValidateConfig(
+	_ context.Context,
+	logger *logrus.Logger,
+	configPath string,
+) (*config.Config, error) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
@@ -132,7 +136,11 @@ func loadAndValidateConfig(configPath string, logger *logrus.Logger) (*config.Co
 }
 
 // setupInfrastructure initializes Redis and leader election.
-func setupInfrastructure(ctx context.Context, cfg *config.Config, logger *logrus.Logger) (*infrastructure, error) {
+func setupInfrastructure(
+	ctx context.Context,
+	logger *logrus.Logger,
+	cfg *config.Config,
+) (*infrastructure, error) {
 	// Initialize Redis client
 	redisClient := redis.NewClient(logger, redis.Config{
 		Address:      cfg.Redis.Address,
@@ -167,11 +175,13 @@ func setupInfrastructure(ctx context.Context, cfg *config.Config, logger *logrus
 }
 
 // setupServices initializes cartographoor and bounds services.
+// Providers.Start() used here will block until redis has data to give us
+// a guarantee we can boot.
 func setupServices(
 	ctx context.Context,
+	logger *logrus.Logger,
 	cfg *config.Config,
 	infra *infrastructure,
-	logger *logrus.Logger,
 ) (*services, error) {
 	svc := &services{}
 
@@ -207,7 +217,6 @@ func setupServices(
 	logger.Info("Cartographoor service started")
 
 	// Create upstream bounds service
-
 	svc.upstreamBounds, err = bounds.New(logger, cfg, svc.cartographoorProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bounds service: %w", err)
@@ -238,14 +247,15 @@ func setupServices(
 
 	logger.Info("Bounds service started")
 
-	// Note: RedisProvider.Start() blocks until Redis has data (with 30s timeout)
-	// If we reach here, Redis is guaranteed to be populated
-
 	return svc, nil
 }
 
 // startServer creates and starts the HTTP server in a goroutine.
-func startServer(cfg *config.Config, svc *services, logger *logrus.Logger) (*server.Server, error) {
+func startServer(
+	cfg *config.Config,
+	logger *logrus.Logger,
+	svc *services,
+) (*server.Server, error) {
 	srv, err := server.New(logger, cfg, svc.cartographoorProvider, svc.boundsProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create server: %w", err)
@@ -271,11 +281,11 @@ func startServer(cfg *config.Config, svc *services, logger *logrus.Logger) (*ser
 // 4. Leader election (release leadership lock).
 // 5. Redis client (close connections).
 func shutdownGracefully(
+	logger *logrus.Logger,
 	cfg *config.Config,
 	srv *server.Server,
 	svc *services,
 	infra *infrastructure,
-	logger *logrus.Logger,
 ) {
 	logger.Info("Initiating graceful shutdown...")
 

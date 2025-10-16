@@ -15,24 +15,38 @@ server:
   # Logging
   log_level: "info"  # trace, debug, info, warn, error, fatal, panic
 
-# Network definitions
-# Each network routes to a specific CBT API backend
+# Cartographoor integration
+# Dynamically discover and manage networks from ethPandaOps cartographoor
+cartographoor:
+  enabled: true  # Set to false to disable cartographoor integration
+  source_url: "https://ethpandaops-platform-production-cartographoor.ams3.cdn.digitaloceanspaces.com/networks.json"
+  refresh_interval: 5m   # How often to refresh network data
+  request_timeout: 30s   # HTTP request timeout for fetching data
+
+# Network configuration (optional overrides and additions)
+# Cartographoor provides base networks - use this section to:
+# 1. Disable specific cartographoor networks
+# 2. Override URLs for cartographoor networks
+# 3. Add custom/local networks not in cartographoor
 networks:
-  - name: mainnet
-    enabled: true
-    target_url: "https://cbt-api-mainnet.primary.production.platform.ethpandaops.io/api/v1"
+  # Example: Disable a cartographoor network
+  # - name: sepolia
+  #   enabled: false
 
-  - name: sepolia
-    enabled: true
-    target_url: "https://cbt-api-sepolia.primary.production.platform.ethpandaops.io/api/v1"
+  # Example: Override URL for a cartographoor network
+  # - name: mainnet
+  #   enabled: true
+  #   target_url: "https://my-custom-cbt.example.com/api/v1"
 
-  - name: holesky
-    enabled: true
-    target_url: "https://cbt-api-holesky.primary.production.platform.ethpandaops.io/api/v1"
+  # Example: Add a custom network not in cartographoor
+  # - name: my-local-devnet
+  #   enabled: true
+  #   target_url: "http://localhost:8080/api/v1"
 
-  - name: hoodi
-    enabled: true
-    target_url: "https://cbt-api-hoodi.primary.production.platform.ethpandaops.io/api/v1"
+  # Note: Networks from cartographoor are automatically added with:
+  # - enabled: true (by default)
+  # - target_url: https://cbt-api-{network}.primary.production.platform.ethpandaops.io/api/v1
+  # Only override if you need different behavior
 
 # Experiment feature flags
 # Controls which experiments are available per network

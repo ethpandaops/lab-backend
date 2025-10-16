@@ -30,6 +30,12 @@ func (n *NetworkConfig) Validate() error {
 		return fmt.Errorf("network name cannot be empty")
 	}
 
+	// Skip target_url validation for disabled networks
+	// (they might be cartographoor overrides with only enabled: false)
+	if !n.Enabled {
+		return nil
+	}
+
 	if n.TargetURL == "" {
 		return fmt.Errorf("network %s: target_url cannot be empty", n.Name)
 	}
@@ -42,20 +48,6 @@ func (n *NetworkConfig) Validate() error {
 
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return fmt.Errorf("network %s: target_url must use http or https scheme", n.Name)
-	}
-
-	return nil
-}
-
-// Validate validates experiment configuration.
-func (ec *ExperimentConfig) Validate(validNetworks map[string]bool) error {
-	for expName, settings := range ec.Experiments {
-		// Validate that specified networks exist
-		for _, networkName := range settings.Networks {
-			if !validNetworks[networkName] {
-				return fmt.Errorf("experiment %s references unknown network: %s", expName, networkName)
-			}
-		}
 	}
 
 	return nil

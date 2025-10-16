@@ -27,6 +27,12 @@ FRONTEND_TARGET ?= web/frontend
 ## build: Build the lab-backend binary
 build:
 	@mkdir -p bin
+	@# Ensure placeholder exists for dev mode (if no full frontend)
+	@if [ ! -f web/frontend/index.html ]; then \
+		if [ -f web/frontend/.placeholder.html ]; then \
+			cp web/frontend/.placeholder.html web/frontend/index.html; \
+		fi; \
+	fi
 	@go build -ldflags "$(LDFLAGS)" -o bin/lab-backend ./cmd/server
 
 ## build-all: Clone frontend, build it, embed it, and build backend
@@ -58,10 +64,10 @@ build-all:
 	@printf "$(CYAN)==> Building frontend (Vite plugin auto-generates routes)...$(RESET)\n"
 	@cd $(FRONTEND_CLONE_DIR) && npx vite build
 
-	@# Copy frontend build output to web/frontend (preserve .gitkeep)
+	@# Copy frontend build output to web/frontend (preserve .gitkeep and .placeholder.html)
 	@printf "$(CYAN)==> Copying frontend to $(FRONTEND_TARGET)...$(RESET)\n"
 	@mkdir -p $(FRONTEND_TARGET)
-	@rsync -av --delete --exclude='.gitkeep' $(FRONTEND_CLONE_DIR)/build/frontend/ $(FRONTEND_TARGET)/
+	@rsync -av --delete --exclude='.gitkeep' --exclude='.placeholder.html' $(FRONTEND_CLONE_DIR)/build/frontend/ $(FRONTEND_TARGET)/
 
 	@# Build backend with embedded frontend
 	@printf "$(CYAN)==> Building lab-backend with embedded frontend...$(RESET)\n"
@@ -74,7 +80,7 @@ build-all:
 clean:
 	@printf "$(CYAN)==> Cleaning artifacts...$(RESET)\n"
 	@rm -rf bin/ dist/ $(FRONTEND_CLONE_DIR)
-	@find $(FRONTEND_TARGET) -mindepth 1 ! -name '.gitkeep' -delete 2>/dev/null || true
+	@find $(FRONTEND_TARGET) -mindepth 1 ! -name '.gitkeep' ! -name '.placeholder.html' -delete 2>/dev/null || true
 	@go clean
 	@printf "$(GREEN)✓ Clean complete$(RESET)\n"
 

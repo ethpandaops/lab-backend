@@ -15,22 +15,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Service manages periodic bounds data fetching and caching.
+// Service is a stateless fetcher that retrieves bounds data from Xatu CBT APIs.
+// It does NOT implement the Provider interface - that's RedisProvider's job.
+// RedisProvider wraps this Service and controls all caching and refresh timing.
 type Service struct {
 	config                *config.Config
 	cartographoorProvider cartographoor.Provider
 	logger                logrus.FieldLogger
 	httpClient            *http.Client
-
-	// Data management
-	mu         sync.RWMutex
-	boundsData map[string]*BoundsData // Key is network name
-	lastFetch  time.Time
-
-	// Lifecycle management
-	refreshTicker *time.Ticker
-	stopChan      chan struct{}
-	wg            sync.WaitGroup
 }
 
 // New creates a new bounds service.
@@ -48,27 +40,14 @@ func New(
 		cartographoorProvider: cartographoorProvider,
 		logger:                logger.WithField("component", "bounds"),
 		httpClient:            cfg.Bounds.HTTPClient(),
-		boundsData:            make(map[string]*BoundsData),
-		stopChan:              make(chan struct{}),
 	}, nil
 }
 
-// Start begins the background refresh cycle.
+// Start begins the bounds service.
+// When wrapped by RedisProvider, this does minimal initialization.
+// RedisProvider controls all fetching (including initial fetch) via its loop.
 func (s *Service) Start(ctx context.Context) error {
-	s.logger.Info("Starting bounds service")
-
-	// Initial fetch (non-blocking on error)
-	if err := s.fetchAndUpdateAll(ctx); err != nil {
-		s.logger.WithError(err).Error("Initial bounds fetch failed")
-	}
-
-	// Start background refresh
-	s.refreshTicker = time.NewTicker(s.config.Bounds.RefreshInterval)
-	s.wg.Add(1)
-
-	go s.refreshLoop(ctx)
-
-	s.logger.WithField("refresh_interval", s.config.Bounds.RefreshInterval).Info("Bounds service started")
+	s.logger.Info("Bounds service started")
 
 	return nil
 }
@@ -77,74 +56,16 @@ func (s *Service) Start(ctx context.Context) error {
 func (s *Service) Stop() error {
 	s.logger.Info("Stopping bounds service")
 
-	close(s.stopChan)
-
-	if s.refreshTicker != nil {
-		s.refreshTicker.Stop()
-	}
-
-	s.wg.Wait()
-
-	s.logger.Info("Bounds service stopped")
-
 	return nil
 }
 
-// GetBounds retrieves bounds for a specific network (Provider interface).
-func (s *Service) GetBounds(network string) (*BoundsData, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	bounds, exists := s.boundsData[network]
-	if !exists {
-		return nil, false
-	}
-
-	// Deep copy to prevent external mutation
-	boundsCopy := *bounds
-
-	return &boundsCopy, true
-}
-
-// GetAllBounds retrieves bounds for all networks (Provider interface).
-func (s *Service) GetAllBounds() map[string]*BoundsData {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make(map[string]*BoundsData, len(s.boundsData))
-
-	for k, v := range s.boundsData {
-		boundsCopy := *v
-		result[k] = &boundsCopy
-	}
-
-	return result
-}
-
-// refreshLoop runs the periodic fetch cycle.
-func (s *Service) refreshLoop(ctx context.Context) {
-	defer s.wg.Done()
-
-	for {
-		select {
-		case <-s.refreshTicker.C:
-			if err := s.fetchAndUpdateAll(ctx); err != nil {
-				s.logger.WithError(err).Error("Failed to refresh bounds data")
-			}
-		case <-s.stopChan:
-			return
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-// fetchAndUpdateAll fetches bounds for all enabled networks concurrently.
-func (s *Service) fetchAndUpdateAll(ctx context.Context) error {
+// FetchBounds fetches bounds data for all enabled networks and returns it.
+// Does NOT cache - returns data directly to caller (RedisProvider).
+func (s *Service) FetchBounds(ctx context.Context) (map[string]*BoundsData, error) {
 	s.logger.Debug("Fetching bounds data for all networks")
 
 	// Build merged network list (cartographoor + config overrides)
-	mergedNetworks := config.BuildMergedNetworkList(s.config, s.cartographoorProvider)
+	mergedNetworks := config.BuildMergedNetworkList(ctx, s.config, s.cartographoorProvider)
 
 	// Convert map to slice of enabled networks only
 	networks := make([]config.NetworkConfig, 0, len(mergedNetworks))
@@ -159,7 +80,7 @@ func (s *Service) fetchAndUpdateAll(ctx context.Context) error {
 	if len(networks) == 0 {
 		s.logger.Warn("No enabled networks found")
 
-		return nil
+		return make(map[string]*BoundsData), nil
 	}
 
 	// Concurrent fetching with goroutines
@@ -197,7 +118,7 @@ func (s *Service) fetchAndUpdateAll(ctx context.Context) error {
 
 	// Collect results
 	var (
-		newBounds    = make(map[string]*BoundsData, len(networks))
+		boundsData   = make(map[string]*BoundsData, len(networks))
 		successCount = 0
 		errorCount   = 0
 	)
@@ -214,27 +135,29 @@ func (s *Service) fetchAndUpdateAll(ctx context.Context) error {
 			continue
 		}
 
-		newBounds[res.network] = res.bounds
+		boundsData[res.network] = res.bounds
 		successCount++
 	}
 
-	// Update cache atomically
-	s.mu.Lock()
-	s.boundsData = newBounds
-	s.lastFetch = time.Now()
-	s.mu.Unlock()
-
-	s.logger.WithFields(logrus.Fields{
+	// Log at appropriate level based on errors
+	logFields := logrus.Fields{
 		"success": successCount,
 		"errors":  errorCount,
 		"total":   len(networks),
-	}).Info("Updated bounds data")
-
-	if errorCount > 0 {
-		return fmt.Errorf("failed to fetch bounds for %d/%d networks", errorCount, len(networks))
 	}
 
-	return nil
+	if errorCount > 0 {
+		s.logger.WithFields(logFields).Warn("Fetched bounds data with errors")
+	} else {
+		s.logger.WithFields(logFields).Debug("Fetched bounds data")
+	}
+
+	// Return data directly - no caching
+	if errorCount > 0 {
+		return boundsData, fmt.Errorf("failed to fetch bounds for %d/%d networks", errorCount, len(networks))
+	}
+
+	return boundsData, nil
 }
 
 // fetchBoundsForNetwork fetches bounds for a single network with pagination support.

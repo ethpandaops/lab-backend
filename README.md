@@ -48,9 +48,11 @@ Visit `http://localhost:8080` to access the full Lab application.
 | `make help` | Show available commands |
 | `make build` | Build the lab-backend binary (with placeholder frontend) |
 | `make build-all` | Clone lab frontend, build it, and embed in backend |
-| `make run` | Build and run the server (placeholder frontend) |
-| `make run-all` | Build with full frontend and run the server |
-| `make clean` | Remove all build artifacts and cloned frontend |
+| `make run` | Build and run the server (placeholder frontend, starts Redis automatically) |
+| `make run-all` | Build with full frontend and run the server (starts Redis automatically) |
+| `make redis` | Start Redis container for local development |
+| `make stop-redis` | Stop and remove Redis container |
+| `make clean` | Remove all build artifacts, cloned frontend, and stop Redis |
 | `make test` | Run tests |
 
 ## Configuration

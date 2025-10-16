@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,11 +18,12 @@ import (
 
 // Proxy manages network-based reverse proxying.
 type Proxy struct {
-	config   *config.Config
-	proxies  map[string]*httputil.ReverseProxy
-	logger   logrus.FieldLogger
-	mu       sync.RWMutex
-	provider cartographoor.Provider
+	config    *config.Config
+	proxies   map[string]*httputil.ReverseProxy
+	proxyURLs map[string]string // Track current target URLs to detect changes
+	logger    logrus.FieldLogger
+	mu        sync.RWMutex
+	provider  cartographoor.Provider
 
 	// Periodic sync lifecycle
 	syncTicker *time.Ticker
@@ -36,16 +38,17 @@ func New(
 	provider cartographoor.Provider,
 ) (*Proxy, error) {
 	p := &Proxy{
-		config:   cfg,
-		proxies:  make(map[string]*httputil.ReverseProxy),
-		logger:   logger.WithField("component", "proxy"),
-		provider: provider,
-		stopChan: make(chan struct{}),
+		config:    cfg,
+		proxies:   make(map[string]*httputil.ReverseProxy),
+		proxyURLs: make(map[string]string),
+		logger:    logger.WithField("component", "proxy"),
+		provider:  provider,
+		stopChan:  make(chan struct{}),
 	}
 
 	// Initial sync: build merged network list and create proxies
 	// Uses cartographoor-first, config-overlay approach.
-	if err := p.SyncNetworks(); err != nil {
+	if err := p.SyncNetworks(context.Background()); err != nil {
 		// Don't error - proxy still usable with whatever loaded
 		p.logger.WithError(err).Warn("Initial network sync failed")
 	}
@@ -214,7 +217,7 @@ func (p *Proxy) syncLoop(offset time.Duration) {
 		select {
 		case <-time.After(offset):
 			// Initial offset wait complete, proceed to sync
-			if err := p.SyncNetworks(); err != nil {
+			if err := p.SyncNetworks(context.Background()); err != nil {
 				p.logger.WithError(err).Error("Periodic network sync failed")
 			}
 		case <-p.stopChan:
@@ -225,7 +228,7 @@ func (p *Proxy) syncLoop(offset time.Duration) {
 	for {
 		select {
 		case <-p.syncTicker.C:
-			if err := p.SyncNetworks(); err != nil {
+			if err := p.SyncNetworks(context.Background()); err != nil {
 				p.logger.WithError(err).Error("Periodic network sync failed")
 			}
 		case <-p.stopChan:
@@ -235,9 +238,9 @@ func (p *Proxy) syncLoop(offset time.Duration) {
 }
 
 // SyncNetworks syncs proxy networks using cartographoor-first, config-overlay approach.
-func (p *Proxy) SyncNetworks() error {
+func (p *Proxy) SyncNetworks(ctx context.Context) error {
 	// Build merged network list (cartographoor + config overlay)
-	desiredNetworks := config.BuildMergedNetworkList(p.config, p.provider)
+	desiredNetworks := config.BuildMergedNetworkList(ctx, p.config, p.provider)
 
 	p.logger.WithField("count", len(desiredNetworks)).Debug("Syncing networks from merged config")
 
@@ -331,6 +334,7 @@ func (p *Proxy) AddNetwork(network config.NetworkConfig) error {
 	}
 
 	p.proxies[network.Name] = proxy
+	p.proxyURLs[network.Name] = network.TargetURL
 
 	healthStatus := "healthy"
 	if !healthy {
@@ -353,6 +357,7 @@ func (p *Proxy) RemoveNetwork(networkName string) {
 	defer p.mu.Unlock()
 
 	delete(p.proxies, networkName)
+	delete(p.proxyURLs, networkName)
 
 	p.logger.WithField("network", networkName).Info("Network proxy removed")
 }
@@ -360,6 +365,20 @@ func (p *Proxy) RemoveNetwork(networkName string) {
 // UpdateNetwork dynamically updates a network proxy at runtime.
 // Used by cartographer in Phase 2 when network URLs change.
 func (p *Proxy) UpdateNetwork(network config.NetworkConfig) error {
+	p.mu.RLock()
+	currentURL, exists := p.proxyURLs[network.Name]
+	p.mu.RUnlock()
+
+	// Only update if URL changed
+	if exists && currentURL == network.TargetURL {
+		p.logger.WithFields(logrus.Fields{
+			"network":    network.Name,
+			"target_url": network.TargetURL,
+		}).Debug("Network proxy unchanged, skipping update")
+
+		return nil
+	}
+
 	// Check backend health before updating
 	healthy, _ := p.checkHealth(network.TargetURL)
 	if !healthy {
@@ -379,6 +398,7 @@ func (p *Proxy) UpdateNetwork(network config.NetworkConfig) error {
 	}
 
 	p.proxies[network.Name] = proxy
+	p.proxyURLs[network.Name] = network.TargetURL
 
 	healthStatus := "healthy"
 	if !healthy {

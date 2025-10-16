@@ -1,6 +1,9 @@
 package cartographoor
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 const (
 	NetworkStatusActive   = "active"
@@ -64,7 +67,7 @@ type Network struct {
 // Provider defines the interface for network data providers.
 // This abstraction allows for multiple implementations (in-memory, Redis, etc.).
 type Provider interface {
-	GetNetworks() map[string]*Network
-	GetActiveNetworks() map[string]*Network
-	GetNetwork(name string) (*Network, bool)
+	GetNetworks(ctx context.Context) map[string]*Network
+	GetActiveNetworks(ctx context.Context) map[string]*Network
+	GetNetwork(ctx context.Context, name string) (*Network, bool)
 }

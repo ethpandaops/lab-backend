@@ -39,7 +39,7 @@ func New(configData interface{}, logger logrus.FieldLogger) (*Frontend, error) {
 		devMode = true
 		embedFS = os.DirFS("web/frontend")
 	} else {
-		log.Info("Using embedded filesystem (production mode)")
+		log.Info("Using embedded filesystem")
 	}
 
 	// Create index cache and prewarm

@@ -14,6 +14,8 @@ import (
 // Config represents the complete application configuration.
 type Config struct {
 	Server        ServerConfig                  `yaml:"server"`
+	Redis         RedisConfig                   `yaml:"redis"`
+	Leader        LeaderConfig                  `yaml:"leader"`
 	Networks      []NetworkConfig               `yaml:"networks"`
 	Experiments   map[string]ExperimentSettings `yaml:"experiments"`
 	Cartographoor cartographoor.Config          `yaml:"cartographoor"`
@@ -30,10 +32,30 @@ type ServerConfig struct {
 	LogLevel        string        `yaml:"log_level"`
 }
 
+// RedisConfig holds Redis client configuration.
+type RedisConfig struct {
+	Address      string        `yaml:"address"`
+	Password     string        `yaml:"password"`
+	DB           int           `yaml:"db"`
+	DialTimeout  time.Duration `yaml:"dial_timeout"`
+	ReadTimeout  time.Duration `yaml:"read_timeout"`
+	WriteTimeout time.Duration `yaml:"write_timeout"`
+	PoolSize     int           `yaml:"pool_size"`
+}
+
+// LeaderConfig holds leader election configuration.
+type LeaderConfig struct {
+	LockKey       string        `yaml:"lock_key"`
+	LockTTL       time.Duration `yaml:"lock_ttl"`
+	RenewInterval time.Duration `yaml:"renew_interval"`
+	RetryInterval time.Duration `yaml:"retry_interval"`
+}
+
 // BoundsConfig holds bounds service configuration.
 type BoundsConfig struct {
 	RefreshInterval time.Duration `yaml:"refresh_interval"` // How often to refresh bounds
 	RequestTimeout  time.Duration `yaml:"request_timeout"`  // HTTP request timeout
+	BoundsTTL       time.Duration `yaml:"bounds_ttl"`       // Redis TTL for bounds data (0 = no expiration)
 }
 
 // Validate validates the configuration and sets defaults.
@@ -119,6 +141,36 @@ func (c *Config) Validate() error {
 	}
 	if !validLogLevels[c.Server.LogLevel] {
 		return fmt.Errorf("invalid log level: %s", c.Server.LogLevel)
+	}
+
+	// Redis is mandatory infrastructure
+	if c.Redis.Address == "" {
+		return fmt.Errorf("redis.address is required")
+	}
+
+	if c.Redis.DialTimeout <= 0 {
+		return fmt.Errorf("redis.dial_timeout must be positive")
+	}
+
+	if c.Redis.PoolSize <= 0 {
+		return fmt.Errorf("redis.pool_size must be positive")
+	}
+
+	// Leader election is mandatory infrastructure
+	if c.Leader.LockKey == "" {
+		return fmt.Errorf("leader.lock_key is required")
+	}
+
+	if c.Leader.LockTTL <= 0 {
+		return fmt.Errorf("leader.lock_ttl must be positive")
+	}
+
+	if c.Leader.RenewInterval <= 0 {
+		return fmt.Errorf("leader.renew_interval must be positive")
+	}
+
+	if c.Leader.RetryInterval <= 0 {
+		return fmt.Errorf("leader.retry_interval must be positive")
 	}
 
 	// Validate networks

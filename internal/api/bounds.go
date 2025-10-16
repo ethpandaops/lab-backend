@@ -45,7 +45,7 @@ func (h *BoundsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get bounds from provider
-	boundsData, exists := h.provider.GetBounds(network)
+	boundsData, exists := h.provider.GetBounds(r.Context(), network)
 	if !exists {
 		h.logger.WithField("network", network).Warn("Bounds not found for network")
 		http.Error(w, "network not found or bounds unavailable", http.StatusNotFound)

@@ -2,6 +2,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 
@@ -84,13 +85,13 @@ func (c *Config) GetEnabledNetworks() []NetworkConfig {
 
 // BuildMergedNetworkList creates merged network list: cartographoor base + config.yaml overlay.
 // Priority: cartographoor is the source of truth, config.yaml provides overrides.
-func BuildMergedNetworkList(cfg *Config, provider cartographoor.Provider) map[string]NetworkConfig {
+func BuildMergedNetworkList(ctx context.Context, cfg *Config, provider cartographoor.Provider) map[string]NetworkConfig {
 	networks := make(map[string]NetworkConfig)
 
 	// Step 1: Start with cartographoor networks (if available)
 	// Store ALL metadata from cartographoor as the base layer
 	if provider != nil {
-		for name, net := range provider.GetActiveNetworks() {
+		for name, net := range provider.GetActiveNetworks(ctx) {
 			enabled := true
 			networks[name] = NetworkConfig{
 				Name:         net.Name,

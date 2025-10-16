@@ -80,7 +80,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !exists {
 		// Check if network is configured but disabled
 		networkCfg, err := p.config.GetNetworkByName(network)
-		if err == nil && !networkCfg.Enabled {
+		if err == nil && networkCfg.Enabled != nil && !*networkCfg.Enabled {
 			p.logger.WithField("network", network).Debug("Network is disabled")
 
 			p.writeJSONError(w, http.StatusServiceUnavailable, "network disabled", network)
@@ -247,7 +247,7 @@ func (p *Proxy) SyncNetworks() error {
 	// Add or update networks from merged list
 	for name, networkCfg := range desiredNetworks {
 		// Only process enabled networks
-		if !networkCfg.Enabled {
+		if networkCfg.Enabled != nil && !*networkCfg.Enabled {
 			p.logger.WithField("network", name).Debug("Network disabled, skipping")
 
 			continue

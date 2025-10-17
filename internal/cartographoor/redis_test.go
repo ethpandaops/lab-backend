@@ -241,16 +241,6 @@ func TestRedisProvider_checkNetworkHealth(t *testing.T) {
 			expectHealthy:  false,
 			reasonContains: "health check returned 500",
 		},
-		{
-			name: "network timeout",
-			mockResponse: func(w http.ResponseWriter, r *http.Request) {
-				// Simulate timeout by sleeping longer than health check timeout
-				time.Sleep(6 * time.Second)
-				w.WriteHeader(http.StatusOK)
-			},
-			expectHealthy:  false,
-			reasonContains: "health check failed",
-		},
 	}
 
 	for _, tt := range tests {
@@ -270,11 +260,6 @@ func TestRedisProvider_checkNetworkHealth(t *testing.T) {
 			}
 
 			targetURL := server.URL + "/api/v1"
-
-			if tt.name == "network timeout" {
-				// Skip timeout test as it takes too long
-				t.Skip("Timeout test takes too long, skipping")
-			}
 
 			healthy, reason := provider.checkNetworkHealth(targetURL)
 

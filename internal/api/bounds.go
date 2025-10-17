@@ -53,10 +53,10 @@ func (h *BoundsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send JSON response (encode full BoundsData with metadata)
+	// Send JSON response (encode just the tables map)
 	w.Header().Set("Content-Type", "application/json")
 
-	if err := json.NewEncoder(w).Encode(boundsData); err != nil {
+	if err := json.NewEncoder(w).Encode(boundsData.Tables); err != nil {
 		h.logger.WithError(err).Error("Failed to encode response")
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 

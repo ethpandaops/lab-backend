@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -8,25 +9,39 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/ethpandaops/lab-backend/internal/api"
+	"github.com/ethpandaops/lab-backend/internal/bounds"
+	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	"github.com/ethpandaops/lab-backend/web"
 )
 
 // Frontend serves static frontend files with caching and config injection.
 type Frontend struct {
-	fs         fs.FS       // Embedded or local filesystem
-	indexCache *IndexCache // Prewarmed index.html cache
-	configData interface{} // Config data for injection
-	logger     logrus.FieldLogger
-	devMode    bool // True if using local filesystem
+	fs                    fs.FS                  // Embedded or local filesystem
+	indexCache            *IndexCache            // Prewarmed index.html cache
+	configHandler         *api.ConfigHandler     // Handler for config data
+	boundsProvider        bounds.Provider        // Provider for bounds data
+	cartographoorProvider cartographoor.Provider // Provider for cartographoor data
+	logger                logrus.FieldLogger
+	devMode               bool           // True if using local filesystem
+	done                  chan struct{}  // Signal to stop refresh loop
+	wg                    sync.WaitGroup // Wait group for goroutines
 }
 
 // New creates a new frontend server.
 // Attempts to use embedded FS first, falls back to local filesystem in dev.
-// Prewarms index.html into memory cache with config injected.
-func New(configData interface{}, logger logrus.FieldLogger) (*Frontend, error) {
+// Prewarms index.html into memory cache with config and bounds injected.
+// The cache is automatically refreshed when bounds or cartographoor data updates (event-driven).
+func New(
+	logger logrus.FieldLogger,
+	configHandler *api.ConfigHandler,
+	boundsProvider bounds.Provider,
+	cartographoorProvider cartographoor.Provider,
+) (*Frontend, error) {
 	log := logger.WithField("component", "frontend")
 
 	// Try embedded FS first
@@ -42,19 +57,49 @@ func New(configData interface{}, logger logrus.FieldLogger) (*Frontend, error) {
 		log.Info("Using embedded filesystem")
 	}
 
+	// Fetch initial data
+	ctx := context.Background()
+	configData := configHandler.GetConfigData(ctx)
+	boundsData := buildBoundsData(ctx, boundsProvider)
+
 	// Create index cache and prewarm
 	indexCache := &IndexCache{}
-	if err := indexCache.Prewarm(embedFS, configData, log); err != nil {
+	if err := indexCache.Prewarm(log, embedFS, configData, boundsData); err != nil {
 		return nil, fmt.Errorf("failed to prewarm index cache: %w", err)
 	}
 
 	return &Frontend{
-		fs:         embedFS,
-		indexCache: indexCache,
-		configData: configData,
-		logger:     log,
-		devMode:    devMode,
+		fs:                    embedFS,
+		indexCache:            indexCache,
+		configHandler:         configHandler,
+		boundsProvider:        boundsProvider,
+		cartographoorProvider: cartographoorProvider,
+		logger:                log,
+		devMode:               devMode,
+		done:                  make(chan struct{}),
 	}, nil
+}
+
+// Start starts the frontend server and background cache refresh listener.
+func (f *Frontend) Start(ctx context.Context) error {
+	f.logger.Info("Starting frontend cache refresh listener")
+
+	// Start background refresh loop that listens for bounds update notifications
+	f.wg.Add(1)
+
+	go f.refreshLoop(ctx)
+
+	return nil
+}
+
+// Stop stops the background cache refresh listener.
+func (f *Frontend) Stop() error {
+	f.logger.Info("Stopping frontend cache refresh listener")
+
+	close(f.done)
+	f.wg.Wait()
+
+	return nil
 }
 
 // ServeHTTP handles frontend requests.
@@ -173,4 +218,74 @@ func (f *Frontend) setCacheHeaders(w http.ResponseWriter, filePath string) {
 	if !strings.HasSuffix(filePath, "index.html") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
+}
+
+// refreshLoop listens for bounds and cartographoor update notifications and refreshes the cached index.html.
+// This ensures the frontend cache stays in sync with data updates (event-driven).
+func (f *Frontend) refreshLoop(ctx context.Context) {
+	defer f.wg.Done()
+
+	// Get notification channels from providers
+	var boundsNotifyChan <-chan struct{}
+	if f.boundsProvider != nil {
+		boundsNotifyChan = f.boundsProvider.NotifyChannel()
+	}
+
+	var cartographoorNotifyChan <-chan struct{}
+	if f.cartographoorProvider != nil {
+		cartographoorNotifyChan = f.cartographoorProvider.NotifyChannel()
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-f.done:
+			return
+		case <-boundsNotifyChan:
+			// Bounds data has been updated, refresh the cache
+			f.logger.Debug("Bounds updated, refreshing frontend cache")
+
+			f.refreshCache(ctx)
+		case <-cartographoorNotifyChan:
+			// Cartographoor data has been updated, refresh the cache
+			f.logger.Debug("Cartographoor updated, refreshing frontend cache")
+
+			f.refreshCache(ctx)
+		}
+	}
+}
+
+// refreshCache fetches fresh config and bounds data and updates the index cache.
+func (f *Frontend) refreshCache(ctx context.Context) {
+	f.logger.Debug("Refreshing frontend cache with latest config and bounds data")
+
+	// Fetch fresh data
+	configData := f.configHandler.GetConfigData(ctx)
+	boundsData := buildBoundsData(ctx, f.boundsProvider)
+
+	// Update cache
+	if err := f.indexCache.Update(configData, boundsData); err != nil {
+		f.logger.WithError(err).Error("Failed to update frontend cache")
+
+		return
+	}
+
+	f.logger.Debug("Frontend cache refreshed successfully")
+}
+
+// buildBoundsData fetches all bounds and returns them in the format expected by the frontend.
+func buildBoundsData(ctx context.Context, boundsProvider bounds.Provider) map[string]map[string]bounds.TableBounds {
+	boundsData := make(map[string]map[string]bounds.TableBounds)
+
+	if boundsProvider != nil {
+		allBounds := boundsProvider.GetAllBounds(ctx)
+		for network, data := range allBounds {
+			if data != nil {
+				boundsData[network] = data.Tables
+			}
+		}
+	}
+
+	return boundsData
 }

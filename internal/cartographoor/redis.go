@@ -21,13 +21,14 @@ const redisNetworksKey = "lab:config:networks"
 
 // RedisProvider implements Provider interface using Redis as storage.
 type RedisProvider struct {
-	log      logrus.FieldLogger
-	cfg      Config
-	redis    redis.Client
-	elector  leader.Elector
-	upstream *Service
-	done     chan struct{}
-	wg       sync.WaitGroup
+	log        logrus.FieldLogger
+	cfg        Config
+	redis      redis.Client
+	elector    leader.Elector
+	upstream   *Service
+	done       chan struct{}
+	notifyChan chan struct{} // Signals when network data has been updated
+	wg         sync.WaitGroup
 }
 
 // NewRedisProvider creates a Redis-backed cartographoor provider.
@@ -39,12 +40,13 @@ func NewRedisProvider(
 	upstream *Service,
 ) Provider {
 	return &RedisProvider{
-		log:      log.WithField("component", "cartographoor_redis"),
-		cfg:      cfg,
-		redis:    redisClient,
-		elector:  elector,
-		upstream: upstream,
-		done:     make(chan struct{}),
+		log:        log.WithField("component", "cartographoor_redis"),
+		cfg:        cfg,
+		redis:      redisClient,
+		elector:    elector,
+		upstream:   upstream,
+		done:       make(chan struct{}),
+		notifyChan: make(chan struct{}, 1), // Buffered so we don't block
 	}
 }
 
@@ -148,6 +150,11 @@ func (r *RedisProvider) GetNetwork(
 	return network, ok
 }
 
+// NotifyChannel returns a channel that signals when network data has been updated.
+func (r *RedisProvider) NotifyChannel() <-chan struct{} {
+	return r.notifyChan
+}
+
 func (r *RedisProvider) refreshLoop(ctx context.Context) {
 	defer r.wg.Done()
 
@@ -232,6 +239,14 @@ func (r *RedisProvider) refreshData(ctx context.Context) {
 		r.log.WithError(err).Error("Failed to store networks in Redis")
 
 		return
+	}
+
+	// Notify listeners that network data has been updated (non-blocking)
+	select {
+	case r.notifyChan <- struct{}{}:
+		r.log.Debug("Notified listeners of cartographoor update")
+	default:
+		// Channel already has a pending notification, skip
 	}
 }
 

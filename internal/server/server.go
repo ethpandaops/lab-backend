@@ -39,21 +39,21 @@ func New(
 
 	// Health endpoint (no middleware needed for simple health check)
 	mux.HandleFunc("GET /health", handlers.Health())
-	logger.Info("Registered route: GET /health")
+	logger.WithField("route", "GET /health").Info("Registered route")
 
 	// Metrics endpoint (Prometheus format)
 	mux.Handle("GET /metrics", promhttp.Handler())
-	logger.Info("Registered route: GET /metrics")
+	logger.WithField("route", "GET /metrics").Info("Registered route")
 
 	// Config API (must come before wildcard proxy route)
 	configHandler := api.NewConfigHandler(cfg, cartographoorProvider)
 	mux.Handle("GET /api/v1/config", configHandler)
-	logger.Info("Registered route: GET /api/v1/config")
+	logger.WithField("route", "GET /api/v1/config").Info("Registered route")
 
 	// Network-scoped bounds endpoint (must come before wildcard proxy)
 	boundsHandler := api.NewBoundsHandler(boundsProvider, logger)
 	mux.Handle("GET /api/v1/{network}/bounds", boundsHandler)
-	logger.Info("Registered route: GET /api/v1/{network}/bounds")
+	logger.WithField("route", "GET /api/v1/{network}/bounds").Info("Registered route")
 
 	// Network-based proxy for all other API routes
 	proxyHandler, err := proxy.New(logger.WithField("component", "proxy"), cfg, cartographoorProvider)
@@ -65,7 +65,8 @@ func New(
 	logger.WithField("networks", proxyHandler.NetworkCount()).Info("Registered proxy routes")
 
 	// Build config data for frontend injection (use same logic as API endpoint)
-	configData := configHandler.GetConfigData()
+	// Use background context since this is initialization, not a request
+	configData := configHandler.GetConfigData(context.Background())
 
 	// Frontend handler (catch-all for non-API routes)
 	frontendHandler, err := frontend.New(configData, logger)
@@ -75,7 +76,7 @@ func New(
 
 	// Mount frontend as catch-all (must be last)
 	mux.Handle("/", frontendHandler)
-	logger.Info("Registered route: /")
+	logger.WithField("route", "GET /").Info("Registered route")
 
 	// Apply middleware chain: Logging → Metrics → CORS → Recovery
 	handler := middleware.Logging(logger)(mux)

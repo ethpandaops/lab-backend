@@ -14,7 +14,7 @@ YELLOW := \033[0;33m
 RED := \033[0;31m
 RESET := \033[0m
 
-.PHONY: all build build-all clean test run run-all help
+.PHONY: all build build-all clean test run run-all redis stop-redis help
 
 all: build
 
@@ -76,8 +76,19 @@ build-all:
 	@printf "$(GREEN)  Backend binary: bin/lab-backend$(RESET)\n"
 	@printf "$(GREEN)  Frontend embedded from: $(FRONTEND_REF)$(RESET)\n"
 
+## redis: Start Redis container for local development
+redis:
+	@docker rm -f lab-redis 2>/dev/null || true
+	@docker run --name lab-redis -p 6379:6379 -d redis:7-alpine
+	@printf "$(GREEN)✓ Redis started on localhost:6379$(RESET)\n"
+
+## stop-redis: Stop and remove Redis container
+stop-redis:
+	@docker rm -f lab-redis 2>/dev/null || true
+	@printf "$(GREEN)✓ Redis stopped$(RESET)\n"
+
 ## clean: Clean build artifacts and frontend
-clean:
+clean: stop-redis
 	@printf "$(CYAN)==> Cleaning artifacts...$(RESET)\n"
 	@rm -rf bin/ dist/ $(FRONTEND_CLONE_DIR)
 	@find $(FRONTEND_TARGET) -mindepth 1 ! -name '.gitkeep' ! -name '.placeholder.html' -delete 2>/dev/null || true
@@ -90,12 +101,12 @@ test:
 	go test -v -race -cover ./...
 
 ## run: Build and run the server locally
-run: build
+run: redis build
 	@printf "$(CYAN)==> Starting server...$(RESET)\n"
 	@./bin/lab-backend -config config.yaml
 
 ## run-all: Build with frontend and run the server locally
-run-all: build-all
+run-all: redis build-all
 	@printf "$(CYAN)==> Starting server with embedded frontend...$(RESET)\n"
 	@./bin/lab-backend -config config.yaml
 

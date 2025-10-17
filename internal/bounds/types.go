@@ -1,7 +1,10 @@
 //nolint:tagliatelle // superior snake-case yo.
 package bounds
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // TableBounds represents the min/max position bounds for a single table.
 type TableBounds struct {
@@ -18,8 +21,10 @@ type BoundsData struct {
 // Provider defines the interface for bounds data providers.
 // This abstraction enables future Redis implementation.
 type Provider interface {
-	GetBounds(network string) (*BoundsData, bool)
-	GetAllBounds() map[string]*BoundsData
+	Start(ctx context.Context) error
+	Stop() error
+	GetBounds(ctx context.Context, network string) (*BoundsData, bool)
+	GetAllBounds(ctx context.Context) map[string]*BoundsData
 }
 
 // IncrementalTableRecord represents a single row from admin_cbt_incremental.
@@ -34,5 +39,5 @@ type IncrementalTableRecord struct {
 // AdminCBTIncrementalResponse is the upstream API response wrapper.
 type AdminCBTIncrementalResponse struct {
 	AdminCBTIncremental []IncrementalTableRecord `json:"admin_cbt_incremental"`
-	NextPageToken       string                   `json:"next_page_token"` // Token for pagination
+	NextPageToken       string                   `json:"next_page_token"`
 }

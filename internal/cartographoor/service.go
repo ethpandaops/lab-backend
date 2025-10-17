@@ -7,28 +7,15 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
-// Service manages cartographoor network data and implements the Provider interface.
-// In the Redis phase, a RedisProvider will implement the same interface.
+// Service is a stateless fetcher that retrieves network data from Cartographoor API.
 type Service struct {
 	config     *Config
 	logger     logrus.FieldLogger
 	httpClient *http.Client
-
-	// Data management
-	mu        sync.RWMutex
-	networks  map[string]*Network // Key is network name
-	lastFetch time.Time
-
-	// Lifecycle management
-	refreshTicker *time.Ticker
-	stopChan      chan struct{}
-	wg            sync.WaitGroup
 }
 
 // New creates a new cartographoor service.
@@ -45,158 +32,54 @@ func New(cfg *Config, logger logrus.FieldLogger) (*Service, error) {
 		config:     cfg,
 		logger:     logger.WithField("component", "cartographoor"),
 		httpClient: cfg.HTTPClient(),
-		networks:   make(map[string]*Network),
-		stopChan:   make(chan struct{}),
 	}, nil
 }
 
-// Start starts the cartographoor service.
-func (s *Service) Start(ctx context.Context) error {
-	if !s.config.Enabled {
-		s.logger.Info("Cartographoor service disabled")
-
-		return nil
-	}
-
-	s.logger.Info("Starting cartographoor service")
-
-	// Initial fetch
-	if err := s.fetchAndUpdate(ctx); err != nil {
-		s.logger.WithError(err).Error("Initial cartographoor fetch failed")
-		// Don't return error - continue with empty networks
-	}
-
-	// Start background refresh
-	s.refreshTicker = time.NewTicker(s.config.RefreshInterval)
-	s.wg.Add(1)
-
-	go s.refreshLoop(ctx)
-
-	s.logger.WithFields(logrus.Fields{
-		"source_url":       s.config.SourceURL,
-		"refresh_interval": s.config.RefreshInterval,
-	}).Info("Cartographoor service started")
-
-	return nil
-}
-
-// Stop stops the cartographoor service.
-func (s *Service) Stop() error {
-	if !s.config.Enabled {
-		return nil
-	}
-
-	s.logger.Info("Stopping cartographoor service")
-
-	close(s.stopChan)
-
-	if s.refreshTicker != nil {
-		s.refreshTicker.Stop()
-	}
-
-	s.wg.Wait()
-
-	s.logger.Info("Cartographoor service stopped")
-
-	return nil
-}
-
-// GetNetworks returns all networks (active and inactive).
-func (s *Service) GetNetworks() map[string]*Network {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Deep copy to prevent external mutation
-	result := make(map[string]*Network, len(s.networks))
-
-	for k, v := range s.networks {
-		networkCopy := *v
-		result[k] = &networkCopy
-	}
-
-	return result
-}
-
-// GetActiveNetworks returns only active networks.
-func (s *Service) GetActiveNetworks() map[string]*Network {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make(map[string]*Network)
-
-	for k, v := range s.networks {
-		if v.Status == NetworkStatusActive {
-			networkCopy := *v
-			result[k] = &networkCopy
-		}
-	}
-
-	return result
-}
-
-// GetNetwork returns a specific network by name.
-func (s *Service) GetNetwork(name string) (*Network, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	network, exists := s.networks[name]
-	if !exists {
-		return nil, false
-	}
-
-	networkCopy := *network
-
-	return &networkCopy, true
-}
-
-// fetchAndUpdate fetches data from cartographoor and updates internal state.
-func (s *Service) fetchAndUpdate(ctx context.Context) error {
+// FetchNetworks fetches network data from Cartographoor API and returns it.
+func (s *Service) FetchNetworks(
+	ctx context.Context,
+) (map[string]*Network, error) {
 	s.logger.Debug("Fetching cartographoor data")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.config.SourceURL, http.NoBody)
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("fetch data: %w", err)
+		return nil, fmt.Errorf("fetch data: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read response: %w", err)
+		return nil, fmt.Errorf("read response: %w", err)
 	}
 
 	var rawResponse CartographoorResponse
 	if err := json.Unmarshal(body, &rawResponse); err != nil {
-		return fmt.Errorf("parse JSON: %w", err)
+		return nil, fmt.Errorf("parse JSON: %w", err)
 	}
 
-	// Process networks
 	networks := s.processNetworks(&rawResponse)
-
-	// Update state
-	s.mu.Lock()
-	s.networks = networks
-	s.lastFetch = time.Now()
-	s.mu.Unlock()
 
 	s.logger.WithFields(logrus.Fields{
 		"total_networks":  len(networks),
 		"active_networks": s.countActive(networks),
-	}).Info("Updated cartographoor data")
+	}).Debug("Fetched cartographoor data")
 
-	return nil
+	return networks, nil
 }
 
 // processNetworks converts raw cartographoor data to Network structs.
-func (s *Service) processNetworks(response *CartographoorResponse) map[string]*Network {
+func (s *Service) processNetworks(
+	response *CartographoorResponse,
+) map[string]*Network {
 	networks := make(map[string]*Network, len(response.Networks))
 
 	for networkName, rawNet := range response.Networks {
@@ -260,22 +143,4 @@ func (s *Service) countActive(networks map[string]*Network) int {
 	}
 
 	return count
-}
-
-// refreshLoop runs the background refresh cycle.
-func (s *Service) refreshLoop(ctx context.Context) {
-	defer s.wg.Done()
-
-	for {
-		select {
-		case <-s.refreshTicker.C:
-			if err := s.fetchAndUpdate(ctx); err != nil {
-				s.logger.WithError(err).Error("Failed to refresh cartographoor data")
-			}
-		case <-s.stopChan:
-			return
-		case <-ctx.Done():
-			return
-		}
-	}
 }

@@ -11,10 +11,10 @@ const DefaultCartographoorURL = "https://ethpandaops-platform-production-cartogr
 
 // Config holds cartographoor service configuration.
 type Config struct {
-	Enabled         bool          `yaml:"enabled"`          // Enable cartographoor integration
 	SourceURL       string        `yaml:"source_url"`       // Cartographoor JSON URL
 	RefreshInterval time.Duration `yaml:"refresh_interval"` // How often to refresh
 	RequestTimeout  time.Duration `yaml:"request_timeout"`  // HTTP request timeout
+	NetworksTTL     time.Duration `yaml:"networks_ttl"`     // Redis TTL for networks data (0 = no expiration)
 }
 
 // Validate validates and sets defaults for Config.

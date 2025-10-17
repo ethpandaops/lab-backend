@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"sort"
@@ -62,7 +63,10 @@ type ConfigHandler struct {
 }
 
 // NewConfigHandler creates a new config API handler.
-func NewConfigHandler(cfg *config.Config, provider cartographoor.Provider) *ConfigHandler {
+func NewConfigHandler(
+	cfg *config.Config,
+	provider cartographoor.Provider,
+) *ConfigHandler {
 	return &ConfigHandler{
 		config:   cfg,
 		provider: provider,
@@ -79,7 +83,7 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get config data
-	response := h.GetConfigData()
+	response := h.GetConfigData(r.Context())
 
 	// Set headers.
 	w.Header().Set("Content-Type", "application/json")
@@ -95,10 +99,10 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // GetConfigData returns the config data structure for both API and frontend use.
 // This ensures both endpoints use the same logic and return consistent data.
-func (h *ConfigHandler) GetConfigData() ConfigResponse {
+func (h *ConfigHandler) GetConfigData(ctx context.Context) ConfigResponse {
 	return ConfigResponse{
-		Networks:    h.buildNetworks(),
-		Experiments: h.buildExperiments(),
+		Networks:    h.buildNetworks(ctx),
+		Experiments: h.buildExperiments(ctx),
 		Bounds:      make(map[string]TableBounds),
 	}
 }
@@ -106,9 +110,9 @@ func (h *ConfigHandler) GetConfigData() ConfigResponse {
 // buildNetworks converts config.NetworkConfig to NetworkInfo slice.
 // Uses merged NetworkConfig which already has cartographoor + config.yaml overlay applied.
 // Only returns enabled networks.
-func (h *ConfigHandler) buildNetworks() []NetworkInfo {
+func (h *ConfigHandler) buildNetworks(ctx context.Context) []NetworkInfo {
 	// Build merged network list (cartographoor base + config.yaml overrides)
-	mergedNetworks := config.BuildMergedNetworkList(h.config, h.provider)
+	mergedNetworks := config.BuildMergedNetworkList(ctx, h.config, h.provider)
 
 	// Convert to NetworkInfo slice (only enabled networks)
 	networks := make([]NetworkInfo, 0, len(mergedNetworks))
@@ -140,7 +144,7 @@ func (h *ConfigHandler) buildNetworks() []NetworkInfo {
 
 		// Get forks from cartographoor if available (forks not in config.yaml yet)
 		if h.provider != nil {
-			if cartNet, exists := h.provider.GetNetwork(net.Name); exists {
+			if cartNet, exists := h.provider.GetNetwork(ctx, net.Name); exists {
 				// Transform cartographoor.Forks to API Forks
 				forks = transformForks(cartNet.Forks)
 			}
@@ -174,7 +178,7 @@ func (h *ConfigHandler) buildNetworks() []NetworkInfo {
 }
 
 // buildExperiments converts config experiments map to API response array.
-func (h *ConfigHandler) buildExperiments() []Experiment {
+func (h *ConfigHandler) buildExperiments(_ context.Context) []Experiment {
 	experiments := make([]Experiment, 0, len(h.config.Experiments))
 
 	for name, settings := range h.config.Experiments {

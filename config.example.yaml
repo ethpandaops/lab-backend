@@ -15,19 +15,37 @@ server:
   # Logging
   log_level: "info"  # trace, debug, info, warn, error, fatal, panic
 
+# Redis config
+redis:
+  address: "localhost:6379"
+  password: ""
+  db: 0
+  dial_timeout: 5s
+  read_timeout: 3s
+  write_timeout: 3s
+  pool_size: 10
+
+# Leader election config
+leader:
+  lock_key: "lab:leader:lock"
+  lock_ttl: 30s        # Leader lock expires after 30s
+  renew_interval: 10s  # Leader renews lock every 10s
+  retry_interval: 5s   # Followers retry acquiring leadership every 5s
+
 # Cartographoor integration
 # Dynamically discover and manage networks from ethPandaOps cartographoor
 cartographoor:
-  enabled: true  # Set to false to disable cartographoor integration
   source_url: "https://ethpandaops-platform-production-cartographoor.ams3.cdn.digitaloceanspaces.com/networks.json"
-  refresh_interval: 5m   # How often to refresh network data
+  refresh_interval: 5m   # How often the leader refreshes network data from upstream
   request_timeout: 30s   # HTTP request timeout for fetching data
+  networks_ttl: 0s       # Redis TTL for networks data (0s = no expiration)
 
 # Bounds service configuration
 # Fetches and caches min/max position bounds for incremental CBT tables
 bounds:
-  refresh_interval: 10s       # How often to refresh bounds data (minimum 5s)
+  refresh_interval: 10s       # How often the leader refreshes bounds data from upstream (minimum 5s)
   request_timeout: 30s        # HTTP request timeout for fetching bounds (minimum 5s)
+  bounds_ttl: 0s              # Redis TTL for bounds data (0s = no expiration)
 
 # Network configuration (optional overrides and additions)
 # Cartographoor provides base networks - use this section to:

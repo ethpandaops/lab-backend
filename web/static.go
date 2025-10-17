@@ -24,6 +24,6 @@ func Exists() bool {
 		return false
 	}
 
-	// If directory is empty (just .gitkeep), consider it non-existent
-	return len(entries) > 1 || (len(entries) == 1 && entries[0].Name() != ".gitkeep")
+	// If directory is empty, consider it non-existent
+	return len(entries) > 0
 }

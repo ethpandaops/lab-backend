@@ -2,15 +2,15 @@ package frontend
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"sync"
 	"testing"
 	"testing/fstest"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/ethpandaops/lab-backend/internal/testutil"
 )
 
 func TestIndexCache_Prewarm(t *testing.T) {
@@ -63,8 +63,10 @@ func TestIndexCache_Prewarm(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cache := &IndexCache{}
 
+			logger := logrus.New()
+			logger.SetOutput(io.Discard)
 			err := cache.Prewarm(
-				testutil.NewTestLogger(),
+				logger,
 				tt.filesystem,
 				tt.configData,
 				tt.boundsData,
@@ -102,8 +104,10 @@ func TestIndexCache_GetInjected(t *testing.T) {
 		},
 	}
 
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
 	err := cache.Prewarm(
-		testutil.NewTestLogger(),
+		logger,
 		filesystem,
 		map[string]string{"test": "data"},
 		map[string]string{},
@@ -128,8 +132,10 @@ func TestIndexCache_GetOriginal(t *testing.T) {
 		},
 	}
 
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
 	err := cache.Prewarm(
-		testutil.NewTestLogger(),
+		logger,
 		filesystem,
 		map[string]string{},
 		map[string]string{},
@@ -151,9 +157,12 @@ func TestIndexCache_Update(t *testing.T) {
 		},
 	}
 
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
 	// Initial prewarm
 	err := cache.Prewarm(
-		testutil.NewTestLogger(),
+		logger,
 		filesystem,
 		map[string]string{"version": "1.0"},
 		map[string]string{},
@@ -198,9 +207,12 @@ func TestIndexCache_ConcurrentAccess(t *testing.T) {
 		},
 	}
 
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
 	// Initial prewarm
 	err := cache.Prewarm(
-		testutil.NewTestLogger(),
+		logger,
 		filesystem,
 		map[string]string{"initial": "data"},
 		map[string]string{},

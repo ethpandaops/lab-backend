@@ -16,7 +16,6 @@ import (
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	cartomocks "github.com/ethpandaops/lab-backend/internal/cartographoor/mocks"
 	"github.com/ethpandaops/lab-backend/internal/config"
-	"github.com/ethpandaops/lab-backend/internal/testutil"
 )
 
 func TestConfigHandler_ServeHTTP(t *testing.T) {
@@ -121,6 +120,8 @@ func TestConfigHandler_ServeHTTP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Helper()
+
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
@@ -151,7 +152,9 @@ func TestConfigHandler_ServeHTTP(t *testing.T) {
 				Experiments: tt.experiments,
 			}
 
-			handler := NewConfigHandler(testutil.NewTestLogger(), cfg, mockProvider)
+			logger := logrus.New()
+			logger.SetOutput(io.Discard)
+			handler := NewConfigHandler(logger, cfg, mockProvider)
 
 			// Create request
 			req := httptest.NewRequest(tt.method, "/api/v1/config", http.NoBody)
@@ -253,6 +256,8 @@ func TestConfigHandler_buildNetworks(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Helper()
+
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
@@ -332,13 +337,18 @@ func TestConfigHandler_buildExperiments(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Helper()
+
+			logger := logrus.New()
+			logger.SetOutput(io.Discard)
+
 			cfg := &config.Config{
 				Experiments: tt.experiments,
 			}
 
 			handler := &ConfigHandler{
 				config: cfg,
-				logger: testutil.NewTestLogger(),
+				logger: logger,
 			}
 
 			result := handler.buildExperiments(context.Background())

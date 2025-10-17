@@ -2,18 +2,19 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/ethpandaops/lab-backend/internal/bounds"
 	boundsmocks "github.com/ethpandaops/lab-backend/internal/bounds/mocks"
-	"github.com/ethpandaops/lab-backend/internal/testutil"
 )
 
 func TestBoundsHandler_ServeHTTP(t *testing.T) {
@@ -85,7 +86,9 @@ func TestBoundsHandler_ServeHTTP(t *testing.T) {
 				provider = mockProvider
 			}
 
-			handler := NewBoundsHandler(provider, testutil.NewTestLogger())
+			logger := logrus.New()
+			logger.SetOutput(io.Discard)
+			handler := NewBoundsHandler(provider, logger)
 
 			// Create request with path value
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/"+tt.network+"/bounds", http.NoBody)
@@ -125,7 +128,9 @@ func TestBoundsHandler_ContentType(t *testing.T) {
 		}, true).
 		Times(1)
 
-	handler := NewBoundsHandler(mockProvider, testutil.NewTestLogger())
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+	handler := NewBoundsHandler(mockProvider, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/mainnet/bounds", http.NoBody)
 	req.SetPathValue("network", "mainnet")

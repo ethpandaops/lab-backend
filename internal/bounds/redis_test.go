@@ -1,18 +1,20 @@
 package bounds
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	leadermocks "github.com/ethpandaops/lab-backend/internal/leader/mocks"
 	redismocks "github.com/ethpandaops/lab-backend/internal/redis/mocks"
-	"github.com/ethpandaops/lab-backend/internal/testutil"
 )
 
 func TestRedisProvider_GetBounds(t *testing.T) {
@@ -74,15 +76,20 @@ func TestRedisProvider_GetBounds(t *testing.T) {
 				Return(tt.redisData, tt.redisError).
 				Times(1)
 
+			logger := logrus.New()
+			logger.SetOutput(io.Discard)
+
 			provider := NewRedisProvider(
-				testutil.NewTestLogger(),
+				logger,
 				Config{},
 				mockRedis,
 				mockElector,
 				nil, // upstream not needed for Get test
 			)
 
-			ctx := testutil.NewTestContext(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
 			data, found := provider.GetBounds(ctx, tt.network)
 
 			assert.Equal(t, tt.expectFound, found)
@@ -101,8 +108,11 @@ func TestRedisProvider_NotifyChannel(t *testing.T) {
 	mockRedis := redismocks.NewMockClient(ctrl)
 	mockElector := leadermocks.NewMockElector(ctrl)
 
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
 	provider := NewRedisProvider(
-		testutil.NewTestLogger(),
+		logger,
 		Config{},
 		mockRedis,
 		mockElector,

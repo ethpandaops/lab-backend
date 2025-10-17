@@ -1,6 +1,7 @@
 package bounds
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,7 +18,6 @@ import (
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	cartomocks "github.com/ethpandaops/lab-backend/internal/cartographoor/mocks"
 	"github.com/ethpandaops/lab-backend/internal/config"
-	"github.com/ethpandaops/lab-backend/internal/testutil"
 )
 
 func TestService_calculateBounds(t *testing.T) {
@@ -264,13 +264,18 @@ func TestService_fetchBoundsForNetwork(t *testing.T) {
 				},
 			}
 
+			logger := logrus.New()
+			logger.SetOutput(io.Discard)
+
 			svc := &Service{
 				config:     cfg,
-				logger:     testutil.NewTestLogger(),
+				logger:     logger,
 				httpClient: cfg.Bounds.HTTPClient(),
 			}
 
-			ctx := testutil.NewTestContext(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
 			result, err := svc.fetchBoundsForNetwork(ctx, tt.networkConfig)
 
 			if tt.expectError {
@@ -403,14 +408,19 @@ func TestService_FetchBounds(t *testing.T) {
 				},
 			}
 
+			logger := logrus.New()
+			logger.SetOutput(io.Discard)
+
 			svc := &Service{
 				config:                cfg,
 				cartographoorProvider: mockProvider,
-				logger:                testutil.NewTestLogger(),
+				logger:                logger,
 				httpClient:            cfg.Bounds.HTTPClient(),
 			}
 
-			ctx := testutil.NewTestContext(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
 			result, err := svc.FetchBounds(ctx)
 
 			require.NoError(t, err)

@@ -14,46 +14,49 @@ lab-backend is a reverse proxy that routes API requests to different CBT API bac
 
 ## Quick Start
 
-### Option 1: Quick Start (Placeholder Frontend)
-
 ```bash
 # 1. Configure networks and backends
 cp config.example.yaml config.yaml
 # Edit config.yaml with your CBT API backend URLs
 
-# 2. Build and run
+# 2. Build and run (downloads latest frontend from GitHub releases)
 make run
-```
-
-Visit `http://localhost:8080` to see a placeholder page with server status.
-
-### Option 2: Full Frontend (w/ Lab Application)
-
-```bash
-# 1. Configure networks and backends
-cp config.example.yaml config.yaml
-
-# 2. Build with full frontend (clones and builds lab frontend), pass FRONTEND_REF=release/v1.0.0 to switch branch/hash used.
-make run-all
 ```
 
 Visit `http://localhost:8080` to access the full Lab application.
 
-**Note:** Requires Node.js 20+ and npm installed.
+### Using a Local Frontend
+
+If you're developing the frontend locally:
+
+```bash
+# Use local frontend source (requires built dist/ directory)
+FRONTEND_SOURCE=../lab make run
+```
+
+### Using a Specific Branch
+
+```bash
+# Download frontend from a specific branch's latest release
+FRONTEND_BRANCH=develop make run
+```
 
 ## Make Commands
 
 | Command | Description |
 |---------|-------------|
 | `make help` | Show available commands |
-| `make build` | Build the lab-backend binary (with placeholder frontend) |
-| `make build-all` | Clone lab frontend, build it, and embed in backend |
-| `make run` | Build and run the server (placeholder frontend, starts Redis automatically) |
-| `make run-all` | Build with full frontend and run the server (starts Redis automatically) |
+| `make build` | Download frontend from GitHub releases and build the lab-backend binary |
+| `make run` | Build and run the server (starts Redis automatically) |
 | `make redis` | Start Redis container for local development |
 | `make stop-redis` | Stop and remove Redis container |
-| `make clean` | Remove all build artifacts, cloned frontend, and stop Redis |
+| `make clean` | Remove all build artifacts, frontend directory, and stop Redis |
 | `make test` | Run tests |
+
+**Environment Variables:**
+- `FRONTEND_SOURCE` - Path to local frontend source (uses `dist/` directory)
+- `FRONTEND_BRANCH` - Download from specific branch's latest release (e.g., `develop`)
+- `GITHUB_REPO` - GitHub repository for frontend releases (default: `ethpandaops/lab`)
 
 ## Configuration
 

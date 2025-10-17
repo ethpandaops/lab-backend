@@ -29,7 +29,5 @@ coverage.txt
 tmp/
 .tmp/
 
-# Frontend assets (symlink or embedded)
-web/frontend/*
-!web/frontend/.gitkeep
-!web/frontend/.placeholder.html
+# Frontend assets (build artifact)
+web/frontend/

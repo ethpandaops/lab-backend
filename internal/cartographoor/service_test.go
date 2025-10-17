@@ -45,6 +45,7 @@ func TestService_FetchNetworks(t *testing.T) {
 						},
 					},
 				}
+
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(resp) //nolint:errcheck // test.
 			},
@@ -80,6 +81,7 @@ func TestService_FetchNetworks(t *testing.T) {
 					},
 					NetworkMetadata: map[string]NetworkMetadata{},
 				}
+
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(resp) //nolint:errcheck // test.
 			},
@@ -98,6 +100,7 @@ func TestService_FetchNetworks(t *testing.T) {
 					Networks:        map[string]RawNetwork{},
 					NetworkMetadata: map[string]NetworkMetadata{},
 				}
+
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(resp) //nolint:errcheck // test.
 			},

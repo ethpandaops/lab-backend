@@ -127,6 +127,7 @@ func TestService_fetchBoundsForNetwork(t *testing.T) {
 					},
 					NextPageToken: "",
 				}
+
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(resp) //nolint:errcheck //test
 			},
@@ -158,6 +159,7 @@ func TestService_fetchBoundsForNetwork(t *testing.T) {
 						},
 						NextPageToken: "page2",
 					}
+
 					w.Header().Set("Content-Type", "application/json")
 					json.NewEncoder(w).Encode(resp) //nolint:errcheck //test
 				case "page2":
@@ -168,6 +170,7 @@ func TestService_fetchBoundsForNetwork(t *testing.T) {
 						},
 						NextPageToken: "",
 					}
+
 					w.Header().Set("Content-Type", "application/json")
 					json.NewEncoder(w).Encode(resp) //nolint:errcheck //test
 				}
@@ -194,6 +197,7 @@ func TestService_fetchBoundsForNetwork(t *testing.T) {
 					AdminCBTIncremental: []IncrementalTableRecord{},
 					NextPageToken:       "",
 				}
+
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(resp) //nolint:errcheck //test
 			},
@@ -311,6 +315,7 @@ func TestService_FetchBounds(t *testing.T) {
 						},
 						NextPageToken: "",
 					}
+
 					w.Header().Set("Content-Type", "application/json")
 					json.NewEncoder(w).Encode(resp) //nolint:errcheck //test
 				},
@@ -333,6 +338,7 @@ func TestService_FetchBounds(t *testing.T) {
 						},
 						NextPageToken: "",
 					}
+
 					w.Header().Set("Content-Type", "application/json")
 					json.NewEncoder(w).Encode(resp) //nolint:errcheck //test
 				},

@@ -5,7 +5,7 @@ import (
 	"io/fs"
 )
 
-//go:embed frontend/*
+//go:embed all:frontend/*
 var embeddedFiles embed.FS
 
 // GetFS returns the embedded filesystem, with "frontend" prefix stripped.

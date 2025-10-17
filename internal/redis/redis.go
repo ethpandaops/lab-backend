@@ -9,6 +9,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Compile-time interface compliance check.
+var _ Client = (*client)(nil)
+
 // Client provides Redis operations for lab-backend.
 type Client interface {
 	Start(ctx context.Context) error
@@ -89,7 +92,12 @@ func (c *client) Get(ctx context.Context, key string) (string, error) {
 }
 
 // Set stores a key-value pair with optional TTL (0 = no expiration).
-func (c *client) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
+func (c *client) Set(
+	ctx context.Context,
+	key,
+	value string,
+	ttl time.Duration,
+) error {
 	return c.client.Set(ctx, key, value, ttl).Err()
 }
 
@@ -100,7 +108,12 @@ func (c *client) Del(ctx context.Context, keys ...string) error {
 
 // SetNX sets a key only if it doesn't exist (used for leader election).
 // Returns true if the key was set, false if it already existed.
-func (c *client) SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error) {
+func (c *client) SetNX(
+	ctx context.Context,
+	key,
+	value string,
+	ttl time.Duration,
+) (bool, error) {
 	return c.client.SetNX(ctx, key, value, ttl).Result()
 }
 
@@ -108,6 +121,3 @@ func (c *client) SetNX(ctx context.Context, key string, value string, ttl time.D
 func (c *client) GetClient() *redis.Client {
 	return c.client
 }
-
-// Compile-time interface compliance check.
-var _ Client = (*client)(nil)

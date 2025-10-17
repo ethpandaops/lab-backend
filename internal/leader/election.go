@@ -10,6 +10,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Compile-time interface compliance check.
+var _ Elector = (*elector)(nil)
+
 // Elector manages leader election using Redis SETNX.
 type Elector interface {
 	Start(ctx context.Context) error
@@ -174,6 +177,3 @@ func (e *elector) renewLeadership(ctx context.Context) {
 		e.mu.Unlock()
 	}
 }
-
-// Compile-time interface compliance check.
-var _ Elector = (*elector)(nil)

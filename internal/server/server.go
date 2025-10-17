@@ -76,7 +76,7 @@ func New(
 
 	// Mount frontend as catch-all (must be last)
 	mux.Handle("/", frontendHandler)
-	logger.Info("Registered route: /")
+	logger.WithField("route", "GET /").Info("Registered route")
 
 	// Apply middleware chain: Logging → Metrics → CORS → Recovery
 	handler := middleware.Logging(logger)(mux)

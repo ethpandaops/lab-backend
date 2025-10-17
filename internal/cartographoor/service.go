@@ -12,8 +12,6 @@ import (
 )
 
 // Service is a stateless fetcher that retrieves network data from Cartographoor API.
-// It does NOT implement the Provider interface - that's RedisProvider's job.
-// RedisProvider wraps this Service and controls all caching and refresh timing.
 type Service struct {
 	config     *Config
 	logger     logrus.FieldLogger
@@ -37,24 +35,7 @@ func New(cfg *Config, logger logrus.FieldLogger) (*Service, error) {
 	}, nil
 }
 
-// Start starts the cartographoor service.
-// When wrapped by RedisProvider, this does minimal initialization.
-// RedisProvider controls all fetching (including initial fetch) via its loop.
-func (s *Service) Start(ctx context.Context) error {
-	s.logger.WithField("source_url", s.config.SourceURL).Info("Cartographoor service started")
-
-	return nil
-}
-
-// Stop stops the cartographoor service.
-func (s *Service) Stop() error {
-	s.logger.Info("Stopping cartographoor service")
-
-	return nil
-}
-
 // FetchNetworks fetches network data from Cartographoor API and returns it.
-// Does NOT cache - returns data directly to caller (RedisProvider).
 func (s *Service) FetchNetworks(
 	ctx context.Context,
 ) (map[string]*Network, error) {
@@ -85,7 +66,6 @@ func (s *Service) FetchNetworks(
 		return nil, fmt.Errorf("parse JSON: %w", err)
 	}
 
-	// Process and return networks directly - no caching
 	networks := s.processNetworks(&rawResponse)
 
 	s.logger.WithFields(logrus.Fields{

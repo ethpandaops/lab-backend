@@ -185,7 +185,7 @@ func setupServices(
 ) (*services, error) {
 	svc := &services{}
 
-	// Create cartographoor service (mandatory)
+	// Create cartographoor service
 	var err error
 
 	// Create upstream service (fetches from Cartographoor API)
@@ -194,13 +194,7 @@ func setupServices(
 		return nil, fmt.Errorf("failed to create cartographoor service: %w", err)
 	}
 
-	// Start upstream service
-	err = svc.cartographoorSvc.Start(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start cartographoor service: %w", err)
-	}
-
-	// Wrap with Redis provider (mandatory)
+	// Wrap with Redis provider
 	svc.cartographoorProvider = cartographoor.NewRedisProvider(
 		logger,
 		cfg.Cartographoor,
@@ -220,11 +214,6 @@ func setupServices(
 	svc.upstreamBounds, err = bounds.New(logger, cfg, svc.cartographoorProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bounds service: %w", err)
-	}
-
-	err = svc.upstreamBounds.Start(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start bounds service: %w", err)
 	}
 
 	// Wrap with Redis provider
@@ -250,7 +239,7 @@ func setupServices(
 	return svc, nil
 }
 
-// startServer creates and starts the HTTP server in a goroutine.
+// startServer creates and starts the HTTP server.
 func startServer(
 	cfg *config.Config,
 	logger *logrus.Logger,
@@ -277,9 +266,8 @@ func startServer(
 // Shutdown order:
 // 1. HTTP server (stop accepting requests).
 // 2. Providers (stop background loops that use Redis).
-// 3. Upstream services (stop their background loops).
-// 4. Leader election (release leadership lock).
-// 5. Redis client (close connections).
+// 3. Leader election (release leadership lock).
+// 4. Redis client (close connections).
 func shutdownGracefully(
 	logger *logrus.Logger,
 	cfg *config.Config,
@@ -308,19 +296,6 @@ func shutdownGracefully(
 	if svc.boundsProvider != nil {
 		if err := svc.boundsProvider.Stop(); err != nil {
 			logger.WithError(err).Error("Error stopping bounds provider")
-		}
-	}
-
-	// Stop upstream services
-	if svc.cartographoorSvc != nil {
-		if err := svc.cartographoorSvc.Stop(); err != nil {
-			logger.WithError(err).Error("Error stopping cartographoor service")
-		}
-	}
-
-	if svc.upstreamBounds != nil {
-		if err := svc.upstreamBounds.Stop(); err != nil {
-			logger.WithError(err).Error("Error stopping bounds service")
 		}
 	}
 

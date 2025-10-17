@@ -20,7 +20,7 @@ import (
 type Proxy struct {
 	config    *config.Config
 	proxies   map[string]*httputil.ReverseProxy
-	proxyURLs map[string]string // Track current target URLs to detect changes
+	proxyURLs map[string]string
 	logger    logrus.FieldLogger
 	mu        sync.RWMutex
 	provider  cartographoor.Provider
@@ -111,7 +111,10 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // createReverseProxy creates and configures a ReverseProxy for a target URL.
-func (p *Proxy) createReverseProxy(targetURL string, networkName string) (*httputil.ReverseProxy, error) {
+func (p *Proxy) createReverseProxy(
+	targetURL string,
+	networkName string,
+) (*httputil.ReverseProxy, error) {
 	// Parse target URL
 	target, err := url.Parse(targetURL)
 	if err != nil {
@@ -180,19 +183,12 @@ func (p *Proxy) startPeriodicSync() {
 		interval = 5 * time.Minute
 	}
 
-	// Offset proxy sync by 30 seconds after cartographoor fetch
-	// This ensures proxy syncs with fresh data from cartographoor
-	const syncOffset = 30 * time.Second
-
 	p.syncTicker = time.NewTicker(interval)
 	p.wg.Add(1)
 
-	go p.syncLoop(syncOffset)
+	go p.syncLoop()
 
-	p.logger.WithFields(logrus.Fields{
-		"refresh_interval": interval,
-		"sync_offset":      syncOffset,
-	}).Info("Started periodic network sync")
+	p.logger.WithField("refresh_interval", interval).Info("Started periodic network sync")
 }
 
 // stopPeriodicSync stops the background sync goroutine.
@@ -208,21 +204,12 @@ func (p *Proxy) stopPeriodicSync() {
 }
 
 // syncLoop runs the periodic sync in background.
-func (p *Proxy) syncLoop(offset time.Duration) {
+func (p *Proxy) syncLoop() {
 	defer p.wg.Done()
 
-	// Wait for offset before starting sync cycle
-	// This allows cartographoor to fetch fresh data first
-	if offset > 0 {
-		select {
-		case <-time.After(offset):
-			// Initial offset wait complete, proceed to sync
-			if err := p.SyncNetworks(context.Background()); err != nil {
-				p.logger.WithError(err).Error("Periodic network sync failed")
-			}
-		case <-p.stopChan:
-			return
-		}
+	// Sync immediately on startup to get initial state from Redis
+	if err := p.SyncNetworks(context.Background()); err != nil {
+		p.logger.WithError(err).Error("Initial network sync failed")
 	}
 
 	for {

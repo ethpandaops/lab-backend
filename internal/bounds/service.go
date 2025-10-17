@@ -16,8 +16,6 @@ import (
 )
 
 // Service is a stateless fetcher that retrieves bounds data from Xatu CBT APIs.
-// It does NOT implement the Provider interface - that's RedisProvider's job.
-// RedisProvider wraps this Service and controls all caching and refresh timing.
 type Service struct {
 	config                *config.Config
 	cartographoorProvider cartographoor.Provider
@@ -43,31 +41,18 @@ func New(
 	}, nil
 }
 
-// Start begins the bounds service.
-// When wrapped by RedisProvider, this does minimal initialization.
-// RedisProvider controls all fetching (including initial fetch) via its loop.
-func (s *Service) Start(ctx context.Context) error {
-	s.logger.Info("Bounds service started")
-
-	return nil
-}
-
-// Stop gracefully shuts down the service.
-func (s *Service) Stop() error {
-	s.logger.Info("Stopping bounds service")
-
-	return nil
-}
-
 // FetchBounds fetches bounds data for all enabled networks and returns it.
-// Does NOT cache - returns data directly to caller (RedisProvider).
 func (s *Service) FetchBounds(
 	ctx context.Context,
 ) (map[string]*BoundsData, error) {
 	s.logger.Debug("Fetching bounds data for all networks")
 
 	// Build merged network list (cartographoor + config overrides)
-	mergedNetworks := config.BuildMergedNetworkList(ctx, s.config, s.cartographoorProvider)
+	mergedNetworks := config.BuildMergedNetworkList(
+		ctx,
+		s.config,
+		s.cartographoorProvider,
+	)
 
 	// Convert map to slice of enabled networks only
 	networks := make([]config.NetworkConfig, 0, len(mergedNetworks))
@@ -154,7 +139,6 @@ func (s *Service) FetchBounds(
 		s.logger.WithFields(logFields).Debug("Fetched bounds data")
 	}
 
-	// Return data directly - no caching
 	if errorCount > 0 {
 		return boundsData, fmt.Errorf("failed to fetch bounds for %d/%d networks", errorCount, len(networks))
 	}

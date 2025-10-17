@@ -20,7 +20,7 @@ YELLOW := \033[0;33m
 RED := \033[0;31m
 RESET := \033[0m
 
-.PHONY: all build build-all setup-frontend clean test run run-all redis stop-redis help
+.PHONY: all build setup-frontend clean test run redis stop-redis help
 
 all: build
 
@@ -31,22 +31,12 @@ FRONTEND_TARGET ?= web/frontend
 FRONTEND_VERSION_FILE ?= .tmp/frontend-version.txt
 GITHUB_REPO ?= ethpandaops/lab
 
-## build: Build the lab-backend binary
-build:
+## build: Setup frontend and build the lab-backend binary
+build: setup-frontend
+	@printf "$(CYAN)==> Building lab-backend...$(RESET)\n"
 	@mkdir -p bin
-	@# Ensure placeholder exists for dev mode (if no full frontend)
-	@if [ ! -f web/frontend/index.html ]; then \
-		if [ -f web/frontend/.placeholder.html ]; then \
-			cp web/frontend/.placeholder.html web/frontend/index.html; \
-		fi; \
-	fi
 	@go build -ldflags "$(LDFLAGS)" -o bin/lab-backend ./cmd/server
-
-## build-all: Download/symlink frontend and build backend
-build-all: setup-frontend
-	@printf "$(CYAN)==> Building lab-backend with frontend...$(RESET)\n"
-	@$(MAKE) build
-	@printf "$(GREEN)✓ Complete build finished!$(RESET)\n"
+	@printf "$(GREEN)✓ Build complete!$(RESET)\n"
 	@printf "$(GREEN)  Backend binary: bin/lab-backend$(RESET)\n"
 
 ## setup-frontend: Setup frontend from source/release
@@ -61,7 +51,8 @@ setup-frontend:
 			printf "$(RED)Error: $(FRONTEND_SOURCE)/dist does not exist$(RESET)\n"; \
 			exit 1; \
 		fi; \
-		find $(FRONTEND_TARGET) -mindepth 1 ! -name '.gitkeep' ! -name '.placeholder.html' -delete 2>/dev/null || true; \
+		rm -rf $(FRONTEND_TARGET); \
+		mkdir -p $(FRONTEND_TARGET); \
 		cp -r $(FRONTEND_SOURCE)/dist/* $(FRONTEND_TARGET)/; \
 		printf "$(GREEN)✓ Copied $(FRONTEND_SOURCE)/dist -> $(FRONTEND_TARGET)$(RESET)\n"; \
 	else \
@@ -105,7 +96,8 @@ setup-frontend:
 				printf "$(RED)Error: index.html not found in release asset$(RESET)\n"; \
 				exit 1; \
 			fi; \
-			find $(FRONTEND_TARGET) -mindepth 1 ! -name '.gitkeep' ! -name '.placeholder.html' -delete 2>/dev/null || true; \
+			rm -rf $(FRONTEND_TARGET); \
+			mkdir -p $(FRONTEND_TARGET); \
 			cp -r .tmp/frontend-extract/* $(FRONTEND_TARGET)/; \
 			echo "$$RELEASE_TAG" > $(FRONTEND_VERSION_FILE); \
 			printf "$(GREEN)✓ Frontend updated to $$RELEASE_TAG$(RESET)\n"; \
@@ -127,8 +119,7 @@ stop-redis:
 ## clean: Clean build artifacts and frontend
 clean: stop-redis
 	@printf "$(CYAN)==> Cleaning artifacts...$(RESET)\n"
-	@rm -rf bin/ dist/ .tmp/
-	@find $(FRONTEND_TARGET) -mindepth 1 ! -name '.gitkeep' ! -name '.placeholder.html' -delete 2>/dev/null || true
+	@rm -rf bin/ dist/ .tmp/ $(FRONTEND_TARGET)
 	@go clean
 	@printf "$(GREEN)✓ Clean complete$(RESET)\n"
 
@@ -140,11 +131,6 @@ test:
 ## run: Build and run the server locally
 run: redis build
 	@printf "$(CYAN)==> Starting server...$(RESET)\n"
-	@./bin/lab-backend -config config.yaml
-
-## run-all: Build with frontend and run the server locally
-run-all: redis build-all
-	@printf "$(CYAN)==> Starting server with embedded frontend...$(RESET)\n"
 	@./bin/lab-backend -config config.yaml
 
 ## help: Display this help message

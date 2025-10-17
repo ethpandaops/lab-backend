@@ -140,14 +140,48 @@
                         </div>
                     </div>
 
-                    <!-- Injected Configuration -->
+                    <!-- Injected Data -->
                     <div>
                         <h2 class="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                             <span>💉</span>
-                            <span>Injected Configuration</span>
+                            <span>Injected Data</span>
                         </h2>
-                        <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                            <pre id="config-display" class="text-sm/6 text-green-400 font-mono">Loading...</pre>
+                        <div class="space-y-3">
+                            <!-- Config Accordion -->
+                            <div class="border border-gray-200 rounded-lg overflow-hidden">
+                                <button onclick="toggleAccordion('config')"
+                                        class="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-purple-500 font-bold">⚙️</span>
+                                        <span class="font-semibold text-gray-900">Configuration</span>
+                                        <span id="config-badge" class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">-</span>
+                                    </div>
+                                    <svg id="config-chevron" class="size-5 text-gray-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                    </svg>
+                                </button>
+                                <div id="config-content" class="hidden bg-gray-900 p-4 overflow-x-auto">
+                                    <pre id="config-display" class="text-sm/6 text-green-400 font-mono">Loading...</pre>
+                                </div>
+                            </div>
+
+                            <!-- Bounds Accordion -->
+                            <div class="border border-gray-200 rounded-lg overflow-hidden">
+                                <button onclick="toggleAccordion('bounds')"
+                                        class="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-blue-500 font-bold">📊</span>
+                                        <span class="font-semibold text-gray-900">Bounds</span>
+                                        <span id="bounds-badge" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">-</span>
+                                    </div>
+                                    <svg id="bounds-chevron" class="size-5 text-gray-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                    </svg>
+                                </button>
+                                <div id="bounds-content" class="hidden bg-gray-900 p-4 overflow-x-auto">
+                                    <pre id="bounds-display" class="text-sm/6 text-blue-400 font-mono">Loading...</pre>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -169,30 +203,63 @@
     </div>
 
     <script>
-        // The backend injects config here during build
-        // __LAB_CONFIG__ marker for injection
+        // Accordion toggle function
+        function toggleAccordion(name) {
+            const content = document.getElementById(`${name}-content`);
+            const chevron = document.getElementById(`${name}-chevron`);
 
-        // Display the injected config
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                chevron.style.transform = 'rotate(180deg)';
+            } else {
+                content.classList.add('hidden');
+                chevron.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // Display the injected data
         const configDisplay = document.getElementById('config-display');
+        const boundsDisplay = document.getElementById('bounds-display');
+        const configBadge = document.getElementById('config-badge');
+        const boundsBadge = document.getElementById('bounds-badge');
         const networkCount = document.getElementById('network-count');
         const experimentCount = document.getElementById('experiment-count');
 
+        // Handle __CONFIG__
         if (typeof window.__CONFIG__ !== 'undefined') {
             configDisplay.textContent = JSON.stringify(window.__CONFIG__, null, 2);
 
             // Update counts
             if (window.__CONFIG__.networks) {
-                const enabledNetworks = window.__CONFIG__.networks.filter(n => n.enabled).length;
-                networkCount.textContent = enabledNetworks;
+                // Networks are already filtered to enabled ones in the backend
+                networkCount.textContent = window.__CONFIG__.networks.length;
             }
             if (window.__CONFIG__.experiments) {
-                const enabledExperiments = Object.values(window.__CONFIG__.experiments).filter(e => e.enabled).length;
+                // Experiments is an array, filter by enabled flag
+                const enabledExperiments = window.__CONFIG__.experiments.filter(e => e.enabled).length;
                 experimentCount.textContent = enabledExperiments;
             }
+
+            // Update config badge
+            const totalItems = (window.__CONFIG__.networks?.length || 0) + (window.__CONFIG__.experiments?.length || 0);
+            configBadge.textContent = `${totalItems} items`;
         } else {
-            configDisplay.textContent = '// No config injected (injection may not be configured)';
-            networkCount.textContent = '?';
-            experimentCount.textContent = '?';
+            configDisplay.textContent = '// No config injected';
+            configBadge.textContent = 'not available';
+            networkCount.textContent = '0';
+            experimentCount.textContent = '0';
+        }
+
+        // Handle __BOUNDS__
+        if (typeof window.__BOUNDS__ !== 'undefined') {
+            boundsDisplay.textContent = JSON.stringify(window.__BOUNDS__, null, 2);
+
+            // Count total networks with bounds
+            const networkCount = Object.keys(window.__BOUNDS__).length;
+            boundsBadge.textContent = `${networkCount} networks`;
+        } else {
+            boundsDisplay.textContent = '// No bounds injected';
+            boundsBadge.textContent = 'not available';
         }
     </script>
 </body>

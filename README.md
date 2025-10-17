@@ -51,7 +51,8 @@ FRONTEND_BRANCH=develop make run
 | `make redis` | Start Redis container for local development |
 | `make stop-redis` | Stop and remove Redis container |
 | `make clean` | Remove all build artifacts, frontend directory, and stop Redis |
-| `make test` | Run tests |
+| `make test` | Run all tests with race detection |
+| `make generate` | Generate mocks using go generate |
 
 **Environment Variables:**
 - `FRONTEND_SOURCE` - Path to local frontend source (uses `dist/` directory)

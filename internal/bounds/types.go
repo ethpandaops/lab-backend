@@ -25,6 +25,9 @@ type Provider interface {
 	Stop() error
 	GetBounds(ctx context.Context, network string) (*BoundsData, bool)
 	GetAllBounds(ctx context.Context) map[string]*BoundsData
+	// NotifyChannel returns a channel that signals when bounds data has been updated.
+	// Consumers should listen on this channel to refresh cached data.
+	NotifyChannel() <-chan struct{}
 }
 
 // IncrementalTableRecord represents a single row from admin_cbt_incremental.

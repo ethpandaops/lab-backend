@@ -19,13 +19,14 @@ const redisKeyPrefix = "lab:bounds:"
 
 // RedisProvider implements Provider interface using Redis as storage.
 type RedisProvider struct {
-	log      logrus.FieldLogger
-	cfg      Config
-	redis    redis.Client
-	elector  leader.Elector
-	upstream *Service
-	done     chan struct{}
-	wg       sync.WaitGroup
+	log        logrus.FieldLogger
+	cfg        Config
+	redis      redis.Client
+	elector    leader.Elector
+	upstream   *Service
+	done       chan struct{}
+	notifyChan chan struct{} // Signals when bounds data has been updated
+	wg         sync.WaitGroup
 }
 
 // NewRedisProvider creates a Redis-backed bounds provider.
@@ -37,12 +38,13 @@ func NewRedisProvider(
 	upstream *Service,
 ) Provider {
 	return &RedisProvider{
-		log:      log.WithField("component", "bounds_redis"),
-		cfg:      cfg,
-		redis:    redisClient,
-		elector:  elector,
-		upstream: upstream,
-		done:     make(chan struct{}),
+		log:        log.WithField("component", "bounds_redis"),
+		cfg:        cfg,
+		redis:      redisClient,
+		elector:    elector,
+		upstream:   upstream,
+		done:       make(chan struct{}),
+		notifyChan: make(chan struct{}, 1), // Buffered so we don't block
 	}
 }
 
@@ -160,6 +162,11 @@ func (r *RedisProvider) GetAllBounds(
 	return result
 }
 
+// NotifyChannel returns a channel that signals when bounds data has been updated.
+func (r *RedisProvider) NotifyChannel() <-chan struct{} {
+	return r.notifyChan
+}
+
 func (r *RedisProvider) refreshLoop(ctx context.Context) {
 	defer r.wg.Done()
 
@@ -206,6 +213,8 @@ func (r *RedisProvider) refreshData(ctx context.Context) {
 	}
 
 	// Store each network's bounds in Redis
+	successCount := 0
+
 	for network, boundsData := range allBounds {
 		data, err := json.Marshal(boundsData)
 		if err != nil {
@@ -223,6 +232,18 @@ func (r *RedisProvider) refreshData(ctx context.Context) {
 			r.log.WithError(err).WithField("network", network).Error("Failed to store bounds in Redis")
 
 			continue
+		}
+
+		successCount++
+	}
+
+	// Notify listeners that bounds data has been updated (non-blocking)
+	if successCount > 0 {
+		select {
+		case r.notifyChan <- struct{}{}:
+			r.log.Debug("Notified listeners of bounds update")
+		default:
+			// Channel already has a pending notification, skip
 		}
 	}
 }

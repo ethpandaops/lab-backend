@@ -17,9 +17,14 @@ type IndexCache struct {
 	injected []byte // Config-injected version
 }
 
-// Prewarm loads index.html into memory and injects config.
+// Prewarm loads index.html into memory and injects config and bounds.
 // Called once during initialization.
-func (ic *IndexCache) Prewarm(filesystem fs.FS, configData interface{}, logger logrus.FieldLogger) error {
+func (ic *IndexCache) Prewarm(
+	logger logrus.FieldLogger,
+	filesystem fs.FS,
+	configData interface{},
+	boundsData interface{},
+) error {
 	// Open index.html
 	file, err := filesystem.Open("index.html")
 	if err != nil {
@@ -35,13 +40,13 @@ func (ic *IndexCache) Prewarm(filesystem fs.FS, configData interface{}, logger l
 
 	logger.WithField("size", len(original)).Info("Loaded index.html into memory")
 
-	// Inject config
-	injected, err := InjectConfig(original, configData)
+	// Inject config and bounds in a single script tag
+	injected, err := InjectConfigAndBounds(original, configData, boundsData)
 	if err != nil {
-		return fmt.Errorf("failed to inject config: %w", err)
+		return fmt.Errorf("failed to inject config and bounds: %w", err)
 	}
 
-	logger.WithField("size", len(injected)).Info("Config injected into index.html")
+	logger.WithField("size", len(injected)).Info("Config and bounds injected into index.html")
 
 	// Store in cache
 	ic.mu.Lock()
@@ -71,17 +76,20 @@ func (ic *IndexCache) GetOriginal() []byte {
 	return ic.original
 }
 
-// Update updates the injected config (for future dynamic config updates).
+// Update updates the injected config and bounds (for future dynamic updates).
 // Thread-safe for concurrent access.
-func (ic *IndexCache) Update(configData interface{}) error {
+func (ic *IndexCache) Update(
+	configData interface{},
+	boundsData interface{},
+) error {
 	ic.mu.RLock()
 	original := ic.original
 	ic.mu.RUnlock()
 
-	// Inject new config
-	injected, err := InjectConfig(original, configData)
+	// Inject new config and bounds in a single script tag
+	injected, err := InjectConfigAndBounds(original, configData, boundsData)
 	if err != nil {
-		return fmt.Errorf("failed to inject config: %w", err)
+		return fmt.Errorf("failed to inject config and bounds: %w", err)
 	}
 
 	// Update cache

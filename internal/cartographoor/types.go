@@ -72,4 +72,7 @@ type Provider interface {
 	GetNetworks(ctx context.Context) map[string]*Network
 	GetActiveNetworks(ctx context.Context) map[string]*Network
 	GetNetwork(ctx context.Context, name string) (*Network, bool)
+	// NotifyChannel returns a channel that signals when network data has been updated.
+	// Consumers should listen on this channel to refresh cached data.
+	NotifyChannel() <-chan struct{}
 }

@@ -23,6 +23,7 @@ import (
 type Server struct {
 	httpServer            *http.Server
 	proxy                 *proxy.Proxy
+	frontend              *frontend.Frontend
 	logger                logrus.FieldLogger
 	cartographoorProvider cartographoor.Provider
 	boundsProvider        bounds.Provider
@@ -64,12 +65,9 @@ func New(
 	mux.Handle("/api/v1/", proxyHandler)
 	logger.WithField("networks", proxyHandler.NetworkCount()).Info("Registered proxy routes")
 
-	// Build config data for frontend injection (use same logic as API endpoint)
-	// Use background context since this is initialization, not a request
-	configData := configHandler.GetConfigData(context.Background())
-
 	// Frontend handler (catch-all for non-API routes)
-	frontendHandler, err := frontend.New(configData, logger)
+	// Pass providers so frontend can refresh its cache when data updates
+	frontendHandler, err := frontend.New(logger, configHandler, boundsProvider, cartographoorProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create frontend handler: %w", err)
 	}
@@ -97,6 +95,7 @@ func New(
 	return &Server{
 		httpServer:            httpServer,
 		proxy:                 proxyHandler,
+		frontend:              frontendHandler,
 		logger:                logger,
 		cartographoorProvider: cartographoorProvider,
 		boundsProvider:        boundsProvider,
@@ -105,6 +104,11 @@ func New(
 
 // Start starts the HTTP server (blocking call).
 func (s *Server) Start() error {
+	// Start frontend cache refresh loop
+	if err := s.frontend.Start(context.Background()); err != nil {
+		return fmt.Errorf("failed to start frontend: %w", err)
+	}
+
 	s.logger.WithField("addr", s.httpServer.Addr).Info("Starting HTTP server")
 
 	return s.httpServer.ListenAndServe()
@@ -114,7 +118,14 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Info("Shutting down HTTP server")
 
-	// Shutdown proxy first (stops periodic sync)
+	// Shutdown frontend cache refresh loop
+	if s.frontend != nil {
+		if err := s.frontend.Stop(); err != nil {
+			s.logger.WithError(err).Error("Error shutting down frontend")
+		}
+	}
+
+	// Shutdown proxy (stops periodic sync)
 	if s.proxy != nil {
 		if err := s.proxy.Shutdown(); err != nil {
 			s.logger.WithError(err).Error("Error shutting down proxy")

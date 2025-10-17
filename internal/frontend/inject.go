@@ -7,21 +7,32 @@ import (
 	"strings"
 )
 
-// InjectConfig injects config JSON into HTML head.
-// Finds <head> tag and inserts: <script>window.__CONFIG__={...}</script>.
-func InjectConfig(htmlContent []byte, configData interface{}) ([]byte, error) {
+// InjectConfigAndBounds injects both config and bounds JSON into HTML head in a single script tag.
+// Finds <head> tag and inserts: <script>window.__CONFIG__={...}; window.__BOUNDS__={...};</script>.
+func InjectConfigAndBounds(htmlContent []byte, configData interface{}, boundsData interface{}) ([]byte, error) {
 	// Serialize config to JSON
 	configJSON, err := json.Marshal(configData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal config: %w", err)
 	}
 
+	// Serialize bounds to JSON
+	boundsJSON, err := json.Marshal(boundsData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal bounds: %w", err)
+	}
+
 	// Escape for script tag safety (prevent </script> injection)
 	// Replace </ with <\/ to prevent premature script tag closure
-	safeJSON := strings.ReplaceAll(string(configJSON), "</", `<\/`)
+	safeConfigJSON := strings.ReplaceAll(string(configJSON), "</", `<\/`)
+	safeBoundsJSON := strings.ReplaceAll(string(boundsJSON), "</", `<\/`)
 
-	// Create script tag
-	scriptTag := fmt.Sprintf("\n  <script>\n    window.__CONFIG__ = %s;\n  </script>\n", safeJSON)
+	// Create combined script tag with both config and bounds
+	scriptTag := fmt.Sprintf(
+		"\n  <script>\n    window.__CONFIG__ = %s;\n    window.__BOUNDS__ = %s;\n  </script>\n",
+		safeConfigJSON,
+		safeBoundsJSON,
+	)
 
 	// Find <head> tag and insert script after it
 	headTag := []byte("<head>")

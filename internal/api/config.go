@@ -18,9 +18,8 @@ var _ http.Handler = (*ConfigHandler)(nil)
 
 // ConfigResponse is the JSON response for /api/v1/config.
 type ConfigResponse struct {
-	Networks    []NetworkInfo          `json:"networks"`
-	Experiments []Experiment           `json:"experiments"`
-	Bounds      map[string]TableBounds `json:"bounds"`
+	Networks    []NetworkInfo `json:"networks"`
+	Experiments []Experiment  `json:"experiments"`
 }
 
 // NetworkInfo represents network metadata.
@@ -49,12 +48,6 @@ type Experiment struct {
 	Name     string   `json:"name"`
 	Enabled  bool     `json:"enabled"`
 	Networks []string `json:"networks"` // empty = all networks
-}
-
-// TableBounds represents CBT table min/max bounds.
-type TableBounds struct {
-	Min int64 `json:"min"` // minimum slot
-	Max int64 `json:"max"` // maximum slot
 }
 
 // ConfigHandler handles /api/v1/config requests.
@@ -107,7 +100,6 @@ func (h *ConfigHandler) GetConfigData(ctx context.Context) ConfigResponse {
 	return ConfigResponse{
 		Networks:    h.buildNetworks(ctx),
 		Experiments: h.buildExperiments(ctx),
-		Bounds:      make(map[string]TableBounds),
 	}
 }
 

@@ -89,9 +89,9 @@ func (c *Config) GetEnabledNetworks() []NetworkConfig {
 // Cartographoor provider already filters for healthy networks, so this just merges data.
 func BuildMergedNetworkList(
 	ctx context.Context,
+	logger logrus.FieldLogger,
 	cfg *Config,
 	provider cartographoor.Provider,
-	logger logrus.FieldLogger,
 ) map[string]NetworkConfig {
 	networks := make(map[string]NetworkConfig)
 

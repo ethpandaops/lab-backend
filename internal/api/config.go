@@ -66,9 +66,9 @@ type ConfigHandler struct {
 
 // NewConfigHandler creates a new config API handler.
 func NewConfigHandler(
+	logger logrus.FieldLogger,
 	cfg *config.Config,
 	provider cartographoor.Provider,
-	logger logrus.FieldLogger,
 ) *ConfigHandler {
 	return &ConfigHandler{
 		config:   cfg,
@@ -116,7 +116,7 @@ func (h *ConfigHandler) GetConfigData(ctx context.Context) ConfigResponse {
 // Only returns enabled networks.
 func (h *ConfigHandler) buildNetworks(ctx context.Context) []NetworkInfo {
 	// Build merged network list (cartographoor base + config.yaml overrides)
-	mergedNetworks := config.BuildMergedNetworkList(ctx, h.config, h.provider, h.logger)
+	mergedNetworks := config.BuildMergedNetworkList(ctx, h.logger, h.config, h.provider)
 
 	// Convert to NetworkInfo slice (only enabled networks)
 	networks := make([]NetworkInfo, 0, len(mergedNetworks))

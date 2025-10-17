@@ -46,7 +46,7 @@ func New(
 	logger.WithField("route", "GET /metrics").Info("Registered route")
 
 	// Config API (must come before wildcard proxy route)
-	configHandler := api.NewConfigHandler(cfg, cartographoorProvider, logger)
+	configHandler := api.NewConfigHandler(logger, cfg, cartographoorProvider)
 	mux.Handle("GET /api/v1/config", configHandler)
 	logger.WithField("route", "GET /api/v1/config").Info("Registered route")
 

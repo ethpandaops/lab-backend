@@ -50,9 +50,9 @@ func (s *Service) FetchBounds(
 	// Build merged network list (cartographoor + config overrides)
 	mergedNetworks := config.BuildMergedNetworkList(
 		ctx,
+		s.logger,
 		s.config,
 		s.cartographoorProvider,
-		s.logger,
 	)
 
 	// Convert map to slice of enabled networks only
@@ -131,10 +131,10 @@ func (s *Service) FetchBounds(
 	logFields := logrus.Fields{
 		"success": successCount,
 		"total":   len(networks),
+		"errors":  errorCount,
 	}
 
 	if errorCount > 0 {
-		logFields["errors"] = errorCount
 		s.logger.WithFields(logFields).Warn("Fetched bounds data with errors")
 	} else {
 		s.logger.WithFields(logFields).Debug("Fetched bounds data")

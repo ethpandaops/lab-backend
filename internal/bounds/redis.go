@@ -196,7 +196,6 @@ func (r *RedisProvider) refreshData(ctx context.Context) {
 	// FetchBounds now returns partial data as success, so we always get what's available
 	allBounds, err := r.upstream.FetchBounds(ctx)
 	if err != nil {
-		// This should rarely happen now since FetchBounds returns partial data
 		r.log.WithError(err).Warn("Unexpected error fetching bounds from upstream")
 	}
 

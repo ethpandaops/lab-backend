@@ -207,7 +207,6 @@ func (p *Proxy) stopPeriodicSync() {
 func (p *Proxy) syncLoop() {
 	defer p.wg.Done()
 
-	// No need for immediate sync - New() already did the initial sync
 	for {
 		select {
 		case <-p.syncTicker.C:
@@ -223,7 +222,7 @@ func (p *Proxy) syncLoop() {
 // SyncNetworks syncs proxy networks using cartographoor-first, config-overlay approach.
 func (p *Proxy) SyncNetworks(ctx context.Context) error {
 	// Build merged network list (cartographoor + config overlay)
-	desiredNetworks := config.BuildMergedNetworkList(ctx, p.config, p.provider, p.logger)
+	desiredNetworks := config.BuildMergedNetworkList(ctx, p.logger, p.config, p.provider)
 
 	p.logger.WithField("count", len(desiredNetworks)).Debug("Syncing networks from merged config")
 

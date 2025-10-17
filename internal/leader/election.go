@@ -1,5 +1,7 @@
 package leader
 
+//go:generate mockgen -package mocks -destination mocks/mock_elector.go github.com/ethpandaops/lab-backend/internal/leader Elector
+
 import (
 	"context"
 	"sync"

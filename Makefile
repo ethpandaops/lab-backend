@@ -20,7 +20,7 @@ YELLOW := \033[0;33m
 RED := \033[0;31m
 RESET := \033[0m
 
-.PHONY: all build setup-frontend clean test run redis stop-redis help
+.PHONY: all build setup-frontend clean run redis stop-redis test generate help
 
 all: build
 
@@ -125,8 +125,16 @@ clean: stop-redis
 
 ## test: Run all tests
 test:
-	@printf "$(CYAN)==> Running tests...$(RESET)\n"
-	go test -v -race -cover ./...
+	@printf "$(CYAN)==> Running unit tests...$(RESET)\n"
+	@go install gotest.tools/gotestsum@latest
+	@gotestsum --raw-command go test -v -race -failfast -coverprofile=coverage.out -covermode=atomic -json $$(go list ./...) && \
+		printf "$(GREEN)✓ Unit tests passed$(RESET)\n"
+
+## generate: Generates mocks
+generate:
+	@printf "$(CYAN)==> Generating mocks...$(RESET)\n"
+	@go generate ./...  && \
+	printf "$(GREEN)✓ Mocks generated successfully$(RESET)\n"
 
 ## run: Build and run the server locally
 run: redis build

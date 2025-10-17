@@ -17,6 +17,8 @@ dist/
 # Test coverage
 *.out
 coverage.txt
+coverage.out
+coverage.html
 
 # IDE
 .vscode/

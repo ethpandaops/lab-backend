@@ -1,5 +1,7 @@
 package redis
 
+//go:generate mockgen -package mocks -destination mocks/mock_client.go github.com/ethpandaops/lab-backend/internal/redis Client
+
 import (
 	"context"
 	"fmt"

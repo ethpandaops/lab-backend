@@ -1,5 +1,7 @@
 package cartographoor
 
+//go:generate mockgen -package mocks -destination mocks/mock_provider.go github.com/ethpandaops/lab-backend/internal/cartographoor Provider
+
 import (
 	"context"
 	"time"

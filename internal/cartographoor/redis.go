@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -202,8 +204,22 @@ func (r *RedisProvider) refreshData(ctx context.Context) {
 		return
 	}
 
+	// Filter for healthy networks only (health check each backend)
+	healthyNetworks := r.filterHealthyNetworks(activeNetworks)
+
+	if len(healthyNetworks) == 0 {
+		r.log.Warn("No healthy networks found after health checks")
+
+		return
+	}
+
+	r.log.WithFields(logrus.Fields{
+		"total":   len(activeNetworks),
+		"healthy": len(healthyNetworks),
+	}).Debug("Filtered networks by health")
+
 	// Serialize to JSON
-	data, err := json.Marshal(activeNetworks)
+	data, err := json.Marshal(healthyNetworks)
 	if err != nil {
 		r.log.WithError(err).Error("Failed to marshal networks")
 
@@ -217,4 +233,101 @@ func (r *RedisProvider) refreshData(ctx context.Context) {
 
 		return
 	}
+}
+
+// filterHealthyNetworks performs concurrent health checks on all networks.
+// Only returns networks that pass health checks.
+func (r *RedisProvider) filterHealthyNetworks(networks map[string]*Network) map[string]*Network {
+	type healthCheckResult struct {
+		name    string
+		network *Network
+		healthy bool
+		reason  string
+	}
+
+	// Launch concurrent health checks
+	resultsChan := make(chan healthCheckResult, len(networks))
+
+	var wg sync.WaitGroup
+
+	for name, network := range networks {
+		wg.Add(1)
+
+		go func(n string, net *Network) {
+			defer wg.Done()
+
+			healthy, reason := r.checkNetworkHealth(net.TargetURL)
+			resultsChan <- healthCheckResult{
+				name:    n,
+				network: net,
+				healthy: healthy,
+				reason:  reason,
+			}
+		}(name, network)
+	}
+
+	// Close channel when all health checks complete
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	// Collect results
+	healthyNetworks := make(map[string]*Network)
+
+	for result := range resultsChan {
+		if !result.healthy {
+			r.log.WithFields(logrus.Fields{
+				"network":    result.name,
+				"target_url": result.network.TargetURL,
+				"reason":     result.reason,
+			}).Warn("Network failed health check, skipping")
+
+			continue
+		}
+
+		healthyNetworks[result.name] = result.network
+	}
+
+	return healthyNetworks
+}
+
+// checkNetworkHealth checks if a backend is healthy by hitting its /health endpoint.
+// Returns (healthy bool, reason string).
+func (r *RedisProvider) checkNetworkHealth(targetURL string) (bool, string) {
+	if targetURL == "" {
+		return false, "no target URL"
+	}
+
+	// Parse target URL to construct health endpoint
+	baseURL, err := url.Parse(targetURL)
+	if err != nil {
+		return false, fmt.Sprintf("invalid URL: %v", err)
+	}
+
+	// Build health check URL (replace /api/v1 path with /health)
+	healthURL := &url.URL{
+		Scheme: baseURL.Scheme,
+		Host:   baseURL.Host,
+		Path:   "/health",
+	}
+
+	// Create HTTP client with short timeout for health checks
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	// Perform health check
+	resp, err := client.Get(healthURL.String())
+	if err != nil {
+		return false, fmt.Sprintf("health check failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for 200 OK status
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Sprintf("health check returned %d", resp.StatusCode)
+	}
+
+	return true, ""
 }

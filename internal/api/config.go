@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	"github.com/ethpandaops/lab-backend/internal/config"
+	"github.com/sirupsen/logrus"
 )
 
 // Verify interface compliance at compile time.
@@ -60,16 +61,19 @@ type TableBounds struct {
 type ConfigHandler struct {
 	config   *config.Config
 	provider cartographoor.Provider
+	logger   logrus.FieldLogger
 }
 
 // NewConfigHandler creates a new config API handler.
 func NewConfigHandler(
+	logger logrus.FieldLogger,
 	cfg *config.Config,
 	provider cartographoor.Provider,
 ) *ConfigHandler {
 	return &ConfigHandler{
 		config:   cfg,
 		provider: provider,
+		logger:   logger.WithField("handler", "config"),
 	}
 }
 
@@ -112,7 +116,7 @@ func (h *ConfigHandler) GetConfigData(ctx context.Context) ConfigResponse {
 // Only returns enabled networks.
 func (h *ConfigHandler) buildNetworks(ctx context.Context) []NetworkInfo {
 	// Build merged network list (cartographoor base + config.yaml overrides)
-	mergedNetworks := config.BuildMergedNetworkList(ctx, h.config, h.provider)
+	mergedNetworks := config.BuildMergedNetworkList(ctx, h.logger, h.config, h.provider)
 
 	// Convert to NetworkInfo slice (only enabled networks)
 	networks := make([]NetworkInfo, 0, len(mergedNetworks))

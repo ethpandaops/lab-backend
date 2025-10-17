@@ -7,6 +7,7 @@ import (
 	"net/url"
 
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
+	"github.com/sirupsen/logrus"
 )
 
 // NetworkConfig defines a single network's configuration.
@@ -85,7 +86,13 @@ func (c *Config) GetEnabledNetworks() []NetworkConfig {
 
 // BuildMergedNetworkList creates merged network list: cartographoor base + config.yaml overlay.
 // Priority: cartographoor is the source of truth, config.yaml provides overrides.
-func BuildMergedNetworkList(ctx context.Context, cfg *Config, provider cartographoor.Provider) map[string]NetworkConfig {
+// Cartographoor provider already filters for healthy networks, so this just merges data.
+func BuildMergedNetworkList(
+	ctx context.Context,
+	cfg *Config,
+	provider cartographoor.Provider,
+	logger logrus.FieldLogger,
+) map[string]NetworkConfig {
 	networks := make(map[string]NetworkConfig)
 
 	// Step 1: Start with cartographoor networks (if available)
@@ -147,5 +154,20 @@ func BuildMergedNetworkList(ctx context.Context, cfg *Config, provider cartograp
 		}
 	}
 
-	return networks
+	// Step 3: Filter out disabled networks
+	// Note: Cartographoor provider already filtered for healthy networks
+	enabledNetworks := make(map[string]NetworkConfig)
+
+	for name, network := range networks {
+		// Skip disabled networks
+		if network.Enabled != nil && !*network.Enabled {
+			logger.WithField("network", name).Debug("Network disabled in config, skipping")
+
+			continue
+		}
+
+		enabledNetworks[name] = network
+	}
+
+	return enabledNetworks
 }

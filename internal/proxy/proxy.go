@@ -207,11 +207,7 @@ func (p *Proxy) stopPeriodicSync() {
 func (p *Proxy) syncLoop() {
 	defer p.wg.Done()
 
-	// Sync immediately on startup to get initial state from Redis
-	if err := p.SyncNetworks(context.Background()); err != nil {
-		p.logger.WithError(err).Error("Initial network sync failed")
-	}
-
+	// No need for immediate sync - New() already did the initial sync
 	for {
 		select {
 		case <-p.syncTicker.C:
@@ -227,7 +223,7 @@ func (p *Proxy) syncLoop() {
 // SyncNetworks syncs proxy networks using cartographoor-first, config-overlay approach.
 func (p *Proxy) SyncNetworks(ctx context.Context) error {
 	// Build merged network list (cartographoor + config overlay)
-	desiredNetworks := config.BuildMergedNetworkList(ctx, p.config, p.provider)
+	desiredNetworks := config.BuildMergedNetworkList(ctx, p.config, p.provider, p.logger)
 
 	p.logger.WithField("count", len(desiredNetworks)).Debug("Syncing networks from merged config")
 
@@ -301,16 +297,8 @@ func (p *Proxy) Shutdown() error {
 
 // AddNetwork dynamically adds a new network proxy at runtime.
 // Used by cartographoor when new devnets are discovered.
+// Assumes network has already been health-checked by BuildMergedNetworkList.
 func (p *Proxy) AddNetwork(network config.NetworkConfig) error {
-	// Check backend health before adding
-	healthy, _ := p.checkHealth(network.TargetURL)
-	if !healthy {
-		p.logger.WithFields(logrus.Fields{
-			"network":    network.Name,
-			"target_url": network.TargetURL,
-		}).Warn("Backend unhealthy for network")
-	}
-
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -323,15 +311,9 @@ func (p *Proxy) AddNetwork(network config.NetworkConfig) error {
 	p.proxies[network.Name] = proxy
 	p.proxyURLs[network.Name] = network.TargetURL
 
-	healthStatus := "healthy"
-	if !healthy {
-		healthStatus = "unhealthy"
-	}
-
 	p.logger.WithFields(logrus.Fields{
-		"network":       network.Name,
-		"target_url":    network.TargetURL,
-		"health_status": healthStatus,
+		"network":    network.Name,
+		"target_url": network.TargetURL,
 	}).Info("Network proxy added")
 
 	return nil
@@ -351,6 +333,7 @@ func (p *Proxy) RemoveNetwork(networkName string) {
 
 // UpdateNetwork dynamically updates a network proxy at runtime.
 // Used by cartographer in Phase 2 when network URLs change.
+// Assumes network has already been health-checked by BuildMergedNetworkList.
 func (p *Proxy) UpdateNetwork(network config.NetworkConfig) error {
 	p.mu.RLock()
 	currentURL, exists := p.proxyURLs[network.Name]
@@ -366,15 +349,6 @@ func (p *Proxy) UpdateNetwork(network config.NetworkConfig) error {
 		return nil
 	}
 
-	// Check backend health before updating
-	healthy, _ := p.checkHealth(network.TargetURL)
-	if !healthy {
-		p.logger.WithFields(logrus.Fields{
-			"network":    network.Name,
-			"target_url": network.TargetURL,
-		}).Warn("Backend unhealthy for network")
-	}
-
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -387,53 +361,12 @@ func (p *Proxy) UpdateNetwork(network config.NetworkConfig) error {
 	p.proxies[network.Name] = proxy
 	p.proxyURLs[network.Name] = network.TargetURL
 
-	healthStatus := "healthy"
-	if !healthy {
-		healthStatus = "unhealthy"
-	}
-
 	p.logger.WithFields(logrus.Fields{
-		"network":       network.Name,
-		"target_url":    network.TargetURL,
-		"health_status": healthStatus,
+		"network":    network.Name,
+		"target_url": network.TargetURL,
 	}).Info("Network proxy updated")
 
 	return nil
-}
-
-// checkHealth checks if a backend is healthy by hitting its /health endpoint.
-func (p *Proxy) checkHealth(targetURL string) (bool, error) {
-	// Parse target URL to construct health endpoint
-	baseURL, err := url.Parse(targetURL)
-	if err != nil {
-		return false, fmt.Errorf("invalid target URL: %w", err)
-	}
-
-	// Build health check URL (replace /api/v1 path with /health)
-	healthURL := &url.URL{
-		Scheme: baseURL.Scheme,
-		Host:   baseURL.Host,
-		Path:   "/health",
-	}
-
-	// Create HTTP client with short timeout for health checks
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-
-	// Perform health check
-	resp, err := client.Get(healthURL.String())
-	if err != nil {
-		return false, fmt.Errorf("health check request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check for 200 OK status
-	if resp.StatusCode != http.StatusOK {
-		return false, nil
-	}
-
-	return true, nil
 }
 
 // writeJSONError writes a JSON error response.

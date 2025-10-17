@@ -52,6 +52,7 @@ func (s *Service) FetchBounds(
 		ctx,
 		s.config,
 		s.cartographoorProvider,
+		s.logger,
 	)
 
 	// Convert map to slice of enabled networks only
@@ -129,18 +130,14 @@ func (s *Service) FetchBounds(
 	// Log at appropriate level based on errors
 	logFields := logrus.Fields{
 		"success": successCount,
-		"errors":  errorCount,
 		"total":   len(networks),
 	}
 
 	if errorCount > 0 {
+		logFields["errors"] = errorCount
 		s.logger.WithFields(logFields).Warn("Fetched bounds data with errors")
 	} else {
 		s.logger.WithFields(logFields).Debug("Fetched bounds data")
-	}
-
-	if errorCount > 0 {
-		return boundsData, fmt.Errorf("failed to fetch bounds for %d/%d networks", errorCount, len(networks))
 	}
 
 	return boundsData, nil

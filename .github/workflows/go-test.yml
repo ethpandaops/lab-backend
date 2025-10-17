@@ -23,3 +23,6 @@ jobs:
 
       - name: Run tests
         run: make test
+
+      - name: Display coverage summary
+        run: go tool cover -func=coverage.out | tail -1

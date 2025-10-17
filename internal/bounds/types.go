@@ -1,6 +1,8 @@
 //nolint:tagliatelle // superior snake-case yo.
 package bounds
 
+//go:generate mockgen -package mocks -destination mocks/mock_provider.go github.com/ethpandaops/lab-backend/internal/bounds Provider
+
 import (
 	"context"
 	"time"

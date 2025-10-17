@@ -1,6 +1,11 @@
 # Local configuration (copy from config.example.yaml)
 config.yaml
 
+# Environment variables
+.env
+.env.*
+!.env.example
+
 # Build artifacts
 bin/
 dist/

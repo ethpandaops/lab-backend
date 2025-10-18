@@ -22,7 +22,7 @@ import (
 // Frontend serves static frontend files with caching and config injection.
 type Frontend struct {
 	fs                    fs.FS                  // Embedded or local filesystem
-	indexCache            *IndexCache            // Prewarmed index.html cache
+	routeCache            *RouteIndexCache       // Route-specific index cache with head injection
 	configHandler         *api.ConfigHandler     // Handler for config data
 	boundsProvider        bounds.Provider        // Provider for bounds data
 	cartographoorProvider cartographoor.Provider // Provider for cartographoor data
@@ -34,7 +34,7 @@ type Frontend struct {
 
 // New creates a new frontend server.
 // Attempts to use embedded FS first, falls back to local filesystem in dev.
-// Prewarms index.html into memory cache with config and bounds injected.
+// Prewarms index.html into memory cache with route-specific head data injected.
 // The cache is automatically refreshed when bounds or cartographoor data updates (event-driven).
 func New(
 	logger logrus.FieldLogger,
@@ -62,15 +62,17 @@ func New(
 	configData := configHandler.GetConfigData(ctx)
 	boundsData := buildBoundsData(ctx, boundsProvider)
 
-	// Create index cache and prewarm
-	indexCache := &IndexCache{}
-	if err := indexCache.Prewarm(log, embedFS, configData, boundsData); err != nil {
-		return nil, fmt.Errorf("failed to prewarm index cache: %w", err)
+	// Create route-specific cache
+	routeCache := &RouteIndexCache{}
+	if err := routeCache.PrewarmRoutes(log, embedFS, configData, boundsData); err != nil {
+		return nil, fmt.Errorf("failed to prewarm route cache: %w", err)
 	}
+
+	log.Info("Using route-specific caching with head.json data")
 
 	return &Frontend{
 		fs:                    embedFS,
-		indexCache:            indexCache,
+		routeCache:            routeCache,
 		configHandler:         configHandler,
 		boundsProvider:        boundsProvider,
 		cartographoorProvider: cartographoorProvider,
@@ -162,7 +164,14 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // serveIndex serves the cached index.html with injected config.
 func (f *Frontend) serveIndex(w http.ResponseWriter, r *http.Request) {
-	html := f.indexCache.GetInjected()
+	// Get the request path to determine which route cache to use
+	route := r.URL.Path
+	html := f.routeCache.GetForRoute(route)
+
+	f.logger.WithFields(logrus.Fields{
+		"route":          route,
+		"content_length": len(html),
+	}).Debug("Serving route-specific cached index.html")
 
 	// Set no-cache headers for index.html
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -256,7 +265,7 @@ func (f *Frontend) refreshLoop(ctx context.Context) {
 	}
 }
 
-// refreshCache fetches fresh config and bounds data and updates the index cache.
+// refreshCache fetches fresh config and bounds data and updates the route cache.
 func (f *Frontend) refreshCache(ctx context.Context) {
 	f.logger.Debug("Refreshing frontend cache with latest config and bounds data")
 
@@ -264,14 +273,14 @@ func (f *Frontend) refreshCache(ctx context.Context) {
 	configData := f.configHandler.GetConfigData(ctx)
 	boundsData := buildBoundsData(ctx, f.boundsProvider)
 
-	// Update cache
-	if err := f.indexCache.Update(configData, boundsData); err != nil {
-		f.logger.WithError(err).Error("Failed to update frontend cache")
+	// Update route-specific cache
+	if err := f.routeCache.Update(configData, boundsData); err != nil {
+		f.logger.WithError(err).Error("Failed to update route cache")
 
 		return
 	}
 
-	f.logger.Debug("Frontend cache refreshed successfully")
+	f.logger.Debug("Route cache refreshed successfully")
 }
 
 // buildBoundsData fetches all bounds and returns them in the format expected by the frontend.

@@ -29,7 +29,7 @@ func InjectConfigAndBounds(htmlContent []byte, configData interface{}, boundsDat
 
 	// Create combined script tag with both config and bounds
 	scriptTag := fmt.Sprintf(
-		"\n  <script>\n    window.__CONFIG__ = %s;\n    window.__BOUNDS__ = %s;\n  </script>\n",
+		"\n    <script>\n      window.__CONFIG__ = %s;\n      window.__BOUNDS__ = %s;\n    </script>\n",
 		safeConfigJSON,
 		safeBoundsJSON,
 	)
@@ -80,7 +80,7 @@ func InjectAll(htmlContent []byte, configData interface{}, boundsData interface{
 	// Insert head raw content before </head>
 	finalResult := make([]byte, 0, len(result)+len(headRaw))
 	finalResult = append(finalResult, result[:headCloseIndex]...)
-	finalResult = append(finalResult, []byte("\n  ")...) // Add indentation
+	finalResult = append(finalResult, []byte("\n    ")...) // Add indentation
 	finalResult = append(finalResult, []byte(headRaw)...)
 	finalResult = append(finalResult, []byte("\n")...) // Add newline before </head>
 	finalResult = append(finalResult, result[headCloseIndex:]...)

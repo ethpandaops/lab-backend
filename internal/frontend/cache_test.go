@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIndexCache_Prewarm(t *testing.T) {
+func TestRouteIndexCache_PrewarmRoutes(t *testing.T) {
 	tests := []struct {
 		name        string
 		filesystem  fs.FS
@@ -23,7 +23,25 @@ func TestIndexCache_Prewarm(t *testing.T) {
 		errorMsg    string
 	}{
 		{
-			name: "successful prewarm",
+			name: "successful prewarm with head.json",
+			filesystem: fstest.MapFS{
+				"index.html": &fstest.MapFile{
+					Data: []byte("<html><head></head><body></body></html>"),
+				},
+				"head.json": &fstest.MapFile{
+					Data: []byte(`{
+						"_default": {"raw": "<meta name=\"default\">"},
+						"/": {"raw": "<title>Home</title>"},
+						"/about": {"raw": "<title>About</title>"}
+					}`),
+				},
+			},
+			configData:  map[string]string{"version": "1.0"},
+			boundsData:  map[string]int{"max": 100},
+			expectError: false,
+		},
+		{
+			name: "successful prewarm without head.json",
 			filesystem: fstest.MapFS{
 				"index.html": &fstest.MapFile{
 					Data: []byte("<html><head></head><body></body></html>"),
@@ -55,17 +73,32 @@ func TestIndexCache_Prewarm(t *testing.T) {
 			configData:  map[string]string{},
 			boundsData:  map[string]string{},
 			expectError: true,
-			errorMsg:    "failed to inject",
+			errorMsg:    "failed to create default injected HTML",
+		},
+		{
+			name: "invalid head.json returns error",
+			filesystem: fstest.MapFS{
+				"index.html": &fstest.MapFile{
+					Data: []byte("<html><head></head><body></body></html>"),
+				},
+				"head.json": &fstest.MapFile{
+					Data: []byte("invalid json"),
+				},
+			},
+			configData:  map[string]string{},
+			boundsData:  map[string]string{},
+			expectError: true,
+			errorMsg:    "failed to parse head.json",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cache := &IndexCache{}
+			cache := &RouteIndexCache{}
 
 			logger := logrus.New()
 			logger.SetOutput(io.Discard)
-			err := cache.Prewarm(
+			err := cache.PrewarmRoutes(
 				logger,
 				tt.filesystem,
 				tt.configData,
@@ -86,27 +119,35 @@ func TestIndexCache_Prewarm(t *testing.T) {
 
 			// Verify cache is populated
 			original := cache.GetOriginal()
-			injected := cache.GetInjected()
-
 			assert.NotEmpty(t, original)
-			assert.NotEmpty(t, injected)
-			assert.Greater(t, len(injected), len(original), "injected should be larger than original")
+
+			// Default route should always exist
+			defaultHTML := cache.GetForRoute("_default")
+			assert.NotEmpty(t, defaultHTML)
+			assert.Greater(t, len(defaultHTML), len(original), "injected should be larger than original")
 		})
 	}
 }
 
-func TestIndexCache_GetInjected(t *testing.T) {
-	cache := &IndexCache{}
+func TestRouteIndexCache_GetForRoute(t *testing.T) {
+	cache := &RouteIndexCache{}
 
 	filesystem := fstest.MapFS{
 		"index.html": &fstest.MapFile{
 			Data: []byte("<html><head></head><body></body></html>"),
 		},
+		"head.json": &fstest.MapFile{
+			Data: []byte(`{
+				"_default": {"raw": "<meta name=\"default\">"},
+				"/": {"raw": "<title>Home</title>"},
+				"/about": {"raw": "<title>About</title>"}
+			}`),
+		},
 	}
 
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
-	err := cache.Prewarm(
+	err := cache.PrewarmRoutes(
 		logger,
 		filesystem,
 		map[string]string{"test": "data"},
@@ -114,16 +155,36 @@ func TestIndexCache_GetInjected(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	injected := cache.GetInjected()
-	require.NotEmpty(t, injected)
+	t.Run("returns specific route", func(t *testing.T) {
+		homeHTML := cache.GetForRoute("/")
+		require.NotEmpty(t, homeHTML)
+		assert.Contains(t, string(homeHTML), "Home")
+		assert.Contains(t, string(homeHTML), "window.__CONFIG__")
+	})
 
-	// Verify injected content contains config
-	assert.Contains(t, string(injected), "window.__CONFIG__")
-	assert.Contains(t, string(injected), "window.__BOUNDS__")
+	t.Run("returns about route", func(t *testing.T) {
+		aboutHTML := cache.GetForRoute("/about")
+		require.NotEmpty(t, aboutHTML)
+		assert.Contains(t, string(aboutHTML), "About")
+		assert.Contains(t, string(aboutHTML), "window.__CONFIG__")
+	})
+
+	t.Run("falls back to default for unknown route", func(t *testing.T) {
+		unknownHTML := cache.GetForRoute("/unknown")
+		require.NotEmpty(t, unknownHTML)
+		assert.Contains(t, string(unknownHTML), "default")
+		assert.Contains(t, string(unknownHTML), "window.__CONFIG__")
+	})
+
+	t.Run("normalizes empty string to /", func(t *testing.T) {
+		homeHTML := cache.GetForRoute("")
+		require.NotEmpty(t, homeHTML)
+		assert.Contains(t, string(homeHTML), "Home")
+	})
 }
 
-func TestIndexCache_GetOriginal(t *testing.T) {
-	cache := &IndexCache{}
+func TestRouteIndexCache_GetOriginal(t *testing.T) {
+	cache := &RouteIndexCache{}
 
 	originalHTML := "<html><head></head><body>Test</body></html>"
 	filesystem := fstest.MapFS{
@@ -134,7 +195,7 @@ func TestIndexCache_GetOriginal(t *testing.T) {
 
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
-	err := cache.Prewarm(
+	err := cache.PrewarmRoutes(
 		logger,
 		filesystem,
 		map[string]string{},
@@ -148,12 +209,18 @@ func TestIndexCache_GetOriginal(t *testing.T) {
 	assert.Equal(t, originalHTML, string(original))
 }
 
-func TestIndexCache_Update(t *testing.T) {
-	cache := &IndexCache{}
+func TestRouteIndexCache_Update(t *testing.T) {
+	cache := &RouteIndexCache{}
 
 	filesystem := fstest.MapFS{
 		"index.html": &fstest.MapFile{
 			Data: []byte("<html><head></head><body></body></html>"),
+		},
+		"head.json": &fstest.MapFile{
+			Data: []byte(`{
+				"_default": {"raw": "<meta name=\"default\">"},
+				"/": {"raw": "<title>Home</title>"}
+			}`),
 		},
 	}
 
@@ -161,7 +228,7 @@ func TestIndexCache_Update(t *testing.T) {
 	logger.SetOutput(io.Discard)
 
 	// Initial prewarm
-	err := cache.Prewarm(
+	err := cache.PrewarmRoutes(
 		logger,
 		filesystem,
 		map[string]string{"version": "1.0"},
@@ -169,7 +236,8 @@ func TestIndexCache_Update(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	initialInjected := cache.GetInjected()
+	initialDefault := cache.GetForRoute("_default")
+	initialHome := cache.GetForRoute("/")
 
 	// Update with new data
 	err = cache.Update(
@@ -178,32 +246,43 @@ func TestIndexCache_Update(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	updatedInjected := cache.GetInjected()
+	updatedDefault := cache.GetForRoute("_default")
+	updatedHome := cache.GetForRoute("/")
 
-	// Verify injected was updated
-	assert.NotEqual(t, string(initialInjected), string(updatedInjected))
-	assert.Contains(t, string(updatedInjected), "2.0")
+	// Verify content was updated
+	assert.NotEqual(t, string(initialDefault), string(updatedDefault))
+	assert.NotEqual(t, string(initialHome), string(updatedHome))
+	assert.Contains(t, string(updatedDefault), "2.0")
+	assert.Contains(t, string(updatedHome), "2.0")
 }
 
-func TestIndexCache_Update_InvalidHTML(t *testing.T) {
-	cache := &IndexCache{}
+func TestRouteIndexCache_Update_InvalidHTML(t *testing.T) {
+	cache := &RouteIndexCache{}
 
 	// Manually set invalid original HTML
 	cache.mu.Lock()
 	cache.original = []byte("<html><body></body></html>") // Missing <head>
+	cache.headData = make(HeadData)
 	cache.mu.Unlock()
 
 	err := cache.Update(map[string]string{}, map[string]string{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to inject")
+	assert.Contains(t, err.Error(), "failed to create default injected HTML")
 }
 
-func TestIndexCache_ConcurrentAccess(t *testing.T) {
-	cache := &IndexCache{}
+func TestRouteIndexCache_ConcurrentAccess(t *testing.T) {
+	cache := &RouteIndexCache{}
 
 	filesystem := fstest.MapFS{
 		"index.html": &fstest.MapFile{
 			Data: []byte("<html><head></head><body></body></html>"),
+		},
+		"head.json": &fstest.MapFile{
+			Data: []byte(`{
+				"_default": {"raw": "<meta name=\"default\">"},
+				"/": {"raw": "<title>Home</title>"},
+				"/about": {"raw": "<title>About</title>"}
+			}`),
 		},
 	}
 
@@ -211,7 +290,7 @@ func TestIndexCache_ConcurrentAccess(t *testing.T) {
 	logger.SetOutput(io.Discard)
 
 	// Initial prewarm
-	err := cache.Prewarm(
+	err := cache.PrewarmRoutes(
 		logger,
 		filesystem,
 		map[string]string{"initial": "data"},
@@ -231,12 +310,14 @@ func TestIndexCache_ConcurrentAccess(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
+			routes := []string{"/", "/about", "/unknown", ""}
 			for j := 0; j < iterations; j++ {
+				route := routes[j%len(routes)]
+				html := cache.GetForRoute(route)
 				original := cache.GetOriginal()
-				injected := cache.GetInjected()
 
+				assert.NotEmpty(t, html)
 				assert.NotEmpty(t, original)
-				assert.NotEmpty(t, injected)
 			}
 		}()
 	}
@@ -263,8 +344,10 @@ func TestIndexCache_ConcurrentAccess(t *testing.T) {
 
 	// Verify cache is still valid after concurrent access
 	original := cache.GetOriginal()
-	injected := cache.GetInjected()
+	defaultHTML := cache.GetForRoute("_default")
+	homeHTML := cache.GetForRoute("/")
 
 	assert.NotEmpty(t, original)
-	assert.NotEmpty(t, injected)
+	assert.NotEmpty(t, defaultHTML)
+	assert.NotEmpty(t, homeHTML)
 }

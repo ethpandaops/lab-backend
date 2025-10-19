@@ -141,3 +141,95 @@ func TestInjectConfigAndBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestInjectAll(t *testing.T) {
+	htmlContent := []byte(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test</title>
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>`)
+
+	configData := map[string]interface{}{
+		"networks": []map[string]interface{}{
+			{"name": "mainnet"},
+		},
+	}
+
+	boundsData := map[string]interface{}{
+		"mainnet": map[string]interface{}{
+			"min": 0,
+			"max": 100,
+		},
+	}
+
+	t.Run("injects config, bounds, and head raw", func(t *testing.T) {
+		headRaw := `<meta property="og:title" content="Test Page">`
+
+		result, err := InjectAll(htmlContent, configData, boundsData, headRaw)
+		require.NoError(t, err)
+
+		// Check config injection
+		assert.Contains(t, string(result), "window.__CONFIG__")
+		assert.Contains(t, string(result), `"networks"`)
+
+		// Check bounds injection
+		assert.Contains(t, string(result), "window.__BOUNDS__")
+		assert.Contains(t, string(result), `"mainnet"`)
+
+		// Check head raw injection
+		assert.Contains(t, string(result), headRaw)
+
+		// Verify head raw is before </head>
+		headCloseIdx := strings.Index(string(result), "</head>")
+		headRawIdx := strings.Index(string(result), headRaw)
+		assert.True(t, headRawIdx < headCloseIdx, "head raw should be before </head>")
+	})
+
+	t.Run("injects only config and bounds when headRaw is empty", func(t *testing.T) {
+		result, err := InjectAll(htmlContent, configData, boundsData, "")
+		require.NoError(t, err)
+
+		// Check config and bounds are injected
+		assert.Contains(t, string(result), "window.__CONFIG__")
+		assert.Contains(t, string(result), "window.__BOUNDS__")
+
+		// Check structure is maintained
+		assert.Contains(t, string(result), "</head>")
+		assert.Contains(t, string(result), "</body>")
+	})
+
+	t.Run("returns error when no head tag", func(t *testing.T) {
+		badHTML := []byte("<html><body></body></html>")
+
+		_, err := InjectAll(badHTML, configData, boundsData, "test")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "could not find <head> tag")
+	})
+
+	t.Run("returns error when no closing head tag", func(t *testing.T) {
+		badHTML := []byte("<html><head><body></body></html>")
+
+		_, err := InjectAll(badHTML, configData, boundsData, "test")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "could not find </head> tag")
+	})
+
+	t.Run("escapes script tags in JSON", func(t *testing.T) {
+		configWithScript := map[string]interface{}{
+			"test": "</script><script>alert('XSS')</script>",
+		}
+
+		result, err := InjectAll(htmlContent, configWithScript, boundsData, "")
+		require.NoError(t, err)
+
+		// Check that </script> is escaped - Go's JSON encoder uses Unicode escapes
+		assert.NotContains(t, string(result), "</script><script>alert('XSS')")
+		// The JSON encoder will escape < as \u003c and > as \u003e
+		assert.Contains(t, string(result), `\u003c`)
+	})
+}

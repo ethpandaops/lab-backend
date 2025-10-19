@@ -29,7 +29,7 @@ func InjectConfigAndBounds(htmlContent []byte, configData interface{}, boundsDat
 
 	// Create combined script tag with both config and bounds
 	scriptTag := fmt.Sprintf(
-		"\n  <script>\n    window.__CONFIG__ = %s;\n    window.__BOUNDS__ = %s;\n  </script>\n",
+		"\n    <script>\n      window.__CONFIG__ = %s;\n      window.__BOUNDS__ = %s;\n    </script>\n",
 		safeConfigJSON,
 		safeBoundsJSON,
 	)
@@ -50,4 +50,40 @@ func InjectConfigAndBounds(htmlContent []byte, configData interface{}, boundsDat
 	result = append(result, htmlContent[insertPos:]...)
 
 	return result, nil
+}
+
+// InjectAll injects config, bounds, and route-specific head HTML into the HTML head.
+// This inserts both the script tag with window.__CONFIG__ and window.__BOUNDS__,
+// and the raw head HTML for the specific route.
+func InjectAll(htmlContent []byte, configData interface{}, boundsData interface{}, headRaw string) ([]byte, error) {
+	// First inject config and bounds
+	result, err := InjectConfigAndBounds(htmlContent, configData, boundsData)
+	if err != nil {
+		return nil, err
+	}
+
+	// If no head raw content, return result as is
+	if headRaw == "" {
+		return result, nil
+	}
+
+	// Find where to insert the head raw content
+	// We want to insert it after our script tag but still within <head>
+	// Find the closing </head> tag and insert before it
+	headCloseTag := []byte("</head>")
+	headCloseIndex := bytes.Index(result, headCloseTag)
+
+	if headCloseIndex == -1 {
+		return nil, fmt.Errorf("could not find </head> tag in HTML")
+	}
+
+	// Insert head raw content before </head>
+	finalResult := make([]byte, 0, len(result)+len(headRaw))
+	finalResult = append(finalResult, result[:headCloseIndex]...)
+	finalResult = append(finalResult, []byte("\n    ")...) // Add indentation
+	finalResult = append(finalResult, []byte(headRaw)...)
+	finalResult = append(finalResult, []byte("\n")...) // Add newline before </head>
+	finalResult = append(finalResult, result[headCloseIndex:]...)
+
+	return finalResult, nil
 }

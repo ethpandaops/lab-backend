@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"strings"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -106,6 +107,11 @@ func (ric *RouteIndexCache) PrewarmRoutes(
 func (ric *RouteIndexCache) GetForRoute(route string) []byte {
 	ric.mu.RLock()
 	defer ric.mu.RUnlock()
+
+	// Strip query parameters and hash fragments
+	if idx := strings.IndexAny(route, "?#"); idx != -1 {
+		route = route[:idx]
+	}
 
 	// Normalize the route
 	if route == "" || route == "/" || route == indexFileName {

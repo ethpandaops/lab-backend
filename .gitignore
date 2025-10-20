@@ -13,6 +13,7 @@ dist/
 *.dll
 *.so
 *.dylib
+.goreleaser.yaml.new
 
 # Test coverage
 *.out

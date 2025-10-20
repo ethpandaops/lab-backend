@@ -12,8 +12,13 @@ ARG VERSION=dev
 ARG GIT_COMMIT=dev
 ARG BUILD_DATE=unknown
 
-# Build the binary using make
-RUN VERSION=${VERSION} GIT_COMMIT=${GIT_COMMIT} BUILD_DATE=${BUILD_DATE} make build
+# Build the binary directly (frontend already included via goreleaser extra_files)
+RUN mkdir -p bin && \
+    go build -ldflags="-w -s \
+    -X github.com/ethpandaops/lab-backend/internal/version.Version=${VERSION} \
+    -X github.com/ethpandaops/lab-backend/internal/version.GitCommit=${GIT_COMMIT} \
+    -X github.com/ethpandaops/lab-backend/internal/version.BuildDate=${BUILD_DATE}" \
+    -o bin/lab-backend ./cmd/server
 
 # Runtime stage
 FROM alpine:latest

@@ -53,6 +53,14 @@ dockers:
     goos: linux
     goarch: amd64
     dockerfile: Dockerfile
+    extra_files:
+      - Makefile
+      - go.mod
+      - go.sum
+      - cmd
+      - internal
+      - web
+      - config.example.yaml
     image_templates:
       - "ethpandaops/{{ .ProjectName }}:{{ .Version }}-amd64"
       - "ethpandaops/{{ .ProjectName }}:{{ if .Env.RELEASE_SUFFIX }}{{ .Env.RELEASE_SUFFIX }}-{{ end }}latest-amd64"
@@ -69,6 +77,14 @@ dockers:
     goos: linux
     goarch: arm64
     dockerfile: Dockerfile
+    extra_files:
+      - Makefile
+      - go.mod
+      - go.sum
+      - cmd
+      - internal
+      - web
+      - config.example.yaml
     image_templates:
       - "ethpandaops/{{ .ProjectName }}:{{ .Version }}-arm64v8"
       - "ethpandaops/{{ .ProjectName }}:{{ if .Env.RELEASE_SUFFIX }}{{ .Env.RELEASE_SUFFIX }}-{{ end }}latest-arm64v8"

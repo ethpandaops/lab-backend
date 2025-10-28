@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/ethpandaops/lab-backend/internal/redis"
 	"github.com/ethpandaops/lab-backend/internal/server"
 	"github.com/ethpandaops/lab-backend/internal/version"
+	"github.com/ethpandaops/lab-backend/internal/wallclock"
 )
 
 // infrastructure holds core infrastructure components.
@@ -32,6 +34,7 @@ type services struct {
 	cartographoorProvider cartographoor.Provider
 	upstreamBounds        *bounds.Service
 	boundsProvider        bounds.Provider
+	wallclockSvc          *wallclock.Service
 }
 
 func main() {
@@ -236,6 +239,66 @@ func setupServices(
 
 	logger.Info("Bounds service started")
 
+	// Initialize wallclock service
+	svc.wallclockSvc = wallclock.New(logger)
+
+	err = svc.wallclockSvc.Start(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start wallclock service: %w", err)
+	}
+
+	// Populate wallclocks from cartographoor networks
+	networks := svc.cartographoorProvider.GetActiveNetworks(ctx)
+	for name, network := range networks {
+		genesisTimeWithDelay := time.Unix(network.GenesisTime+network.GenesisDelay, 0)
+
+		if err := svc.wallclockSvc.AddNetwork(wallclock.NetworkConfig{
+			Name:           name,
+			GenesisTime:    genesisTimeWithDelay,
+			SecondsPerSlot: 12,
+		}); err != nil {
+			logger.WithFields(logrus.Fields{
+				"network": name,
+				"error":   err.Error(),
+			}).Warn("Failed to add wallclock for network")
+		}
+	}
+
+	logger.WithField("networks", len(networks)).Info("Wallclock service started")
+
+	// Sync wallclocks when cartographoor updates
+	go func() {
+		notifyChan := svc.cartographoorProvider.NotifyChannel()
+
+		for {
+			select {
+			case <-notifyChan:
+				logger.Debug("Cartographoor updated, syncing wallclocks")
+
+				networks := svc.cartographoorProvider.GetActiveNetworks(ctx)
+
+				for name, network := range networks {
+					genesisTime := time.Unix(network.GenesisTime, 0)
+
+					if err := svc.wallclockSvc.AddNetwork(wallclock.NetworkConfig{
+						Name:           name,
+						GenesisTime:    genesisTime,
+						SecondsPerSlot: 12,
+					}); err != nil {
+						logger.WithFields(logrus.Fields{
+							"network": name,
+							"error":   err.Error(),
+						}).Warn("Failed to update wallclock for network")
+					}
+				}
+
+				logger.Debug("Wallclocks synced with cartographoor")
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	return svc, nil
 }
 
@@ -246,7 +309,7 @@ func startServer(
 	infra *infrastructure,
 	svc *services,
 ) (*server.Server, error) {
-	srv, err := server.New(logger, cfg, infra.redisClient, svc.cartographoorProvider, svc.boundsProvider)
+	srv, err := server.New(logger, cfg, infra.redisClient, svc.cartographoorProvider, svc.boundsProvider, svc.wallclockSvc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create server: %w", err)
 	}
@@ -297,6 +360,13 @@ func shutdownGracefully(
 	if svc.boundsProvider != nil {
 		if err := svc.boundsProvider.Stop(); err != nil {
 			logger.WithError(err).Error("Error stopping bounds provider")
+		}
+	}
+
+	// Stop wallclock service
+	if svc.wallclockSvc != nil {
+		if err := svc.wallclockSvc.Stop(); err != nil {
+			logger.WithError(err).Error("Error stopping wallclock service")
 		}
 	}
 

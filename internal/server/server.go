@@ -19,6 +19,7 @@ import (
 	"github.com/ethpandaops/lab-backend/internal/proxy"
 	"github.com/ethpandaops/lab-backend/internal/ratelimit"
 	"github.com/ethpandaops/lab-backend/internal/redis"
+	"github.com/ethpandaops/lab-backend/internal/wallclock"
 )
 
 // Server represents the HTTP server.
@@ -30,6 +31,7 @@ type Server struct {
 	logger                logrus.FieldLogger
 	cartographoorProvider cartographoor.Provider
 	boundsProvider        bounds.Provider
+	wallclockSvc          *wallclock.Service
 }
 
 // New creates a new HTTP server with all routes and middleware.
@@ -39,6 +41,7 @@ func New(
 	redisClient redis.Client,
 	cartographoorProvider cartographoor.Provider,
 	boundsProvider bounds.Provider,
+	wallclockSvc *wallclock.Service,
 ) (*Server, error) {
 	mux := http.NewServeMux()
 
@@ -61,7 +64,7 @@ func New(
 	logger.WithField("route", "GET /api/v1/{network}/bounds").Info("Registered route")
 
 	// Network-based proxy for all other API routes
-	proxyHandler, err := proxy.New(logger.WithField("component", "proxy"), cfg, cartographoorProvider)
+	proxyHandler, err := proxy.New(logger.WithField("component", "proxy"), cfg, cartographoorProvider, wallclockSvc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create proxy: %w", err)
 	}
@@ -122,6 +125,7 @@ func New(
 		logger:                logger,
 		cartographoorProvider: cartographoorProvider,
 		boundsProvider:        boundsProvider,
+		wallclockSvc:          wallclockSvc,
 	}, nil
 }
 

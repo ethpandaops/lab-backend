@@ -14,16 +14,18 @@ import (
 
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 	"github.com/ethpandaops/lab-backend/internal/config"
+	"github.com/ethpandaops/lab-backend/internal/wallclock"
 )
 
 // Proxy manages network-based reverse proxying.
 type Proxy struct {
-	config    *config.Config
-	proxies   map[string]*httputil.ReverseProxy
-	proxyURLs map[string]string
-	logger    logrus.FieldLogger
-	mu        sync.RWMutex
-	provider  cartographoor.Provider
+	config       *config.Config
+	proxies      map[string]*httputil.ReverseProxy
+	proxyURLs    map[string]string
+	logger       logrus.FieldLogger
+	mu           sync.RWMutex
+	provider     cartographoor.Provider
+	wallclockSvc *wallclock.Service
 
 	// Periodic sync lifecycle
 	syncTicker *time.Ticker
@@ -36,14 +38,16 @@ func New(
 	logger logrus.FieldLogger,
 	cfg *config.Config,
 	provider cartographoor.Provider,
+	wallclockSvc *wallclock.Service,
 ) (*Proxy, error) {
 	p := &Proxy{
-		config:    cfg,
-		proxies:   make(map[string]*httputil.ReverseProxy),
-		proxyURLs: make(map[string]string),
-		logger:    logger.WithField("component", "proxy"),
-		provider:  provider,
-		stopChan:  make(chan struct{}),
+		config:       cfg,
+		proxies:      make(map[string]*httputil.ReverseProxy),
+		proxyURLs:    make(map[string]string),
+		logger:       logger.WithField("component", "proxy"),
+		provider:     provider,
+		wallclockSvc: wallclockSvc,
+		stopChan:     make(chan struct{}),
 	}
 
 	// Initial sync: build merged network list and create proxies
@@ -153,8 +157,24 @@ func (p *Proxy) createReverseProxy(
 
 			r.Out.URL.Path = rewrittenPath
 
-			// Preserve query parameters (already handled by SetURL)
-			r.Out.URL.RawQuery = r.In.URL.RawQuery
+			// Transform query parameters (slot_* to slot_start_time_*)
+			originalQuery := r.In.URL.RawQuery
+			transformedQuery := transformQueryParams(
+				p.logger,
+				networkName,
+				p.wallclockSvc,
+				originalQuery,
+			)
+			r.Out.URL.RawQuery = transformedQuery
+
+			// Log transformation if query changed
+			if originalQuery != transformedQuery {
+				p.logger.WithFields(logrus.Fields{
+					"network":     networkName,
+					"original":    originalQuery,
+					"transformed": transformedQuery,
+				}).Debug("Transformed slot filters to slot_start_date_time")
+			}
 		},
 		Transport: transport,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {

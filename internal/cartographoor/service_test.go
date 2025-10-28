@@ -220,17 +220,17 @@ func TestService_constructTargetURL(t *testing.T) {
 		{
 			name:        "standard network name",
 			networkName: "mainnet",
-			expected:    "https://cbt-api-mainnet.primary.production.platform.ethpandaops.io/api/v1",
+			expected:    "https://cbt-api-mainnet.analytics.production.platform.ethpandaops.io/api/v1",
 		},
 		{
 			name:        "hyphenated network name",
 			networkName: "fusaka-devnet-3",
-			expected:    "https://cbt-api-fusaka-devnet-3.primary.production.platform.ethpandaops.io/api/v1",
+			expected:    "https://cbt-api-fusaka-devnet-3.analytics.production.platform.ethpandaops.io/api/v1",
 		},
 		{
 			name:        "sepolia testnet",
 			networkName: "sepolia",
-			expected:    "https://cbt-api-sepolia.primary.production.platform.ethpandaops.io/api/v1",
+			expected:    "https://cbt-api-sepolia.analytics.production.platform.ethpandaops.io/api/v1",
 		},
 	}
 

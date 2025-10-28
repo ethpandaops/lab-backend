@@ -119,7 +119,7 @@ func (s *Service) processNetworks(
 func (s *Service) constructTargetURL(networkName string) string {
 	// Construct from network name using standard pattern
 	// Network names in cartographoor JSON are already clean (e.g., "mainnet", "fusaka-devnet-3")
-	return fmt.Sprintf("https://cbt-api-%s.primary.production.platform.ethpandaops.io/api/v1", networkName)
+	return fmt.Sprintf("https://cbt-api-%s.analytics.production.platform.ethpandaops.io/api/v1", networkName)
 }
 
 // formatDisplayName creates a display name from network name.

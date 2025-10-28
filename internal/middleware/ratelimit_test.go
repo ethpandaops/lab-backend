@@ -46,6 +46,7 @@ func TestRateLimit_AllowsUnderLimit(t *testing.T) {
 	mock := &mockRateLimitService{
 		allowFunc: func(ctx context.Context, ip, key string, lim int, window time.Duration) (bool, int, time.Time, error) {
 			requestCount++
+
 			remaining := limit - requestCount
 			if remaining < 0 {
 				remaining = 0
@@ -103,10 +104,12 @@ func TestRateLimit_DeniesOverLimit(t *testing.T) {
 	mock := &mockRateLimitService{
 		allowFunc: func(ctx context.Context, ip, key string, lim int, window time.Duration) (bool, int, time.Time, error) {
 			requestCount++
+
 			remaining := limit - requestCount
 			if remaining < 0 {
 				remaining = 0
 			}
+
 			allowed := requestCount <= limit
 
 			return allowed, remaining, time.Now().Add(1 * time.Minute), nil
@@ -303,6 +306,7 @@ func TestRateLimit_ExemptIP(t *testing.T) {
 	mock := &mockRateLimitService{
 		allowFunc: func(ctx context.Context, ip, key string, limit int, window time.Duration) (bool, int, time.Time, error) {
 			callCount++
+
 			t.Errorf("rate limiter should not be called for exempt IPs")
 
 			return false, 0, time.Time{}, nil
@@ -443,6 +447,7 @@ func TestRateLimit_NoMatchingRule(t *testing.T) {
 	mock := &mockRateLimitService{
 		allowFunc: func(ctx context.Context, ip, key string, limit int, window time.Duration) (bool, int, time.Time, error) {
 			callCount++
+
 			t.Errorf("rate limiter should not be called when no rule matches")
 
 			return false, 0, time.Time{}, nil
@@ -759,10 +764,12 @@ func TestRateLimit_Integration_RealScenario(t *testing.T) {
 	mock := &mockRateLimitService{
 		allowFunc: func(ctx context.Context, ip, key string, limit int, window time.Duration) (bool, int, time.Time, error) {
 			requestCounts[ip]++
+
 			remaining := limit - requestCounts[ip]
 			if remaining < 0 {
 				remaining = 0
 			}
+
 			allowed := requestCounts[ip] <= limit
 
 			return allowed, remaining, time.Now().Add(window), nil

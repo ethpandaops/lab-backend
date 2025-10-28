@@ -45,13 +45,25 @@ func NewService(
 }
 
 func (s *service) Start(ctx context.Context) error {
-	s.log.Info("rate limiter service started")
+	// Test Redis connectivity
+	if err := s.redis.Ping(ctx).Err(); err != nil {
+		s.log.WithError(err).Warn("Redis connectivity check failed, rate limiter may not work correctly")
+
+		if s.failureMode == "fail_closed" {
+			return fmt.Errorf("redis unavailable in fail_closed mode: %w", err)
+		}
+	}
+
+	s.log.WithFields(logrus.Fields{
+		"failure_mode":    s.failureMode,
+		"redis_connected": s.redis.Ping(ctx).Err() == nil,
+	}).Info("Rate limiter started")
 
 	return nil
 }
 
 func (s *service) Stop() error {
-	s.log.Info("rate limiter service stopped")
+	s.log.Info("Rate limiter stopped")
 
 	return nil
 }

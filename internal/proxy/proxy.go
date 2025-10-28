@@ -135,7 +135,7 @@ func (p *Proxy) createReverseProxy(
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 
-	// Create ReverseProxy with Rewrite function
+	// Create ReverseProxy with Rewrite function and response modification
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			// Set target URL
@@ -175,6 +175,12 @@ func (p *Proxy) createReverseProxy(
 					"transformed": transformedQuery,
 				}).Debug("Transformed slot filters to slot_start_date_time")
 			}
+		},
+		ModifyResponse: func(r *http.Response) error {
+			// Set cache headers for proxy responses
+			r.Header.Set("Cache-Control", "public, max-age=1, s-maxage=5, stale-while-revalidate=1")
+
+			return nil
 		},
 		Transport: transport,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {

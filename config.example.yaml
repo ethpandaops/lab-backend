@@ -47,6 +47,44 @@ bounds:
   request_timeout: 30s        # HTTP request timeout for fetching bounds (minimum 5s)
   bounds_ttl: 0s              # Redis TTL for bounds data (0s = no expiration)
 
+# Rate limiting configuration
+# IP-based rate limiting using Redis for distributed state across multiple instances
+rate_limiting:
+  enabled: true
+
+  # Behavior when Redis is unavailable
+  # Options: "fail_open" (allow requests, prioritize availability) or "fail_closed" (deny requests, prioritize security)
+  failure_mode: "fail_open"
+
+  # IPs/CIDR ranges that bypass rate limiting (e.g., monitoring, internal services)
+  exempt_ips:
+    - "127.0.0.1"    # Localhost IPv4
+    - "::1"          # Localhost IPv6
+    # Add your internal network ranges here, e.g.:
+    # - "10.0.0.0/8"      # Internal network
+    # - "172.16.0.0/12"   # Docker default
+    # - "192.168.0.0/16"  # Private network
+
+  # Rate limit rules (evaluated in order, first match wins)
+  rules:
+    # Expensive bounds queries - stricter limit
+    - name: "bounds_endpoint"
+      path_pattern: "^/api/v1/.*/bounds$"
+      limit: 60        # 60 requests per minute per IP
+      window: "1m"
+
+    # API proxy passthrough - moderate limit
+    - name: "api_proxy"
+      path_pattern: "^/api/v1/.*"
+      limit: 300       # 300 requests per minute per IP
+      window: "1m"
+
+    # Default catch-all for other endpoints
+    - name: "default"
+      path_pattern: ".*"
+      limit: 100       # 100 requests per minute per IP
+      window: "1m"
+
 # Network configuration (optional overrides and additions)
 # Cartographoor provides base networks - use this section to:
 # 1. Disable specific cartographoor networks

@@ -17,6 +17,8 @@ import (
 	"github.com/ethpandaops/lab-backend/internal/handlers"
 	"github.com/ethpandaops/lab-backend/internal/middleware"
 	"github.com/ethpandaops/lab-backend/internal/proxy"
+	"github.com/ethpandaops/lab-backend/internal/ratelimit"
+	"github.com/ethpandaops/lab-backend/internal/redis"
 )
 
 // Server represents the HTTP server.
@@ -24,6 +26,7 @@ type Server struct {
 	httpServer            *http.Server
 	proxy                 *proxy.Proxy
 	frontend              *frontend.Frontend
+	rateLimiter           ratelimit.Service
 	logger                logrus.FieldLogger
 	cartographoorProvider cartographoor.Provider
 	boundsProvider        bounds.Provider
@@ -33,6 +36,7 @@ type Server struct {
 func New(
 	logger logrus.FieldLogger,
 	cfg *config.Config,
+	redisClient redis.Client,
 	cartographoorProvider cartographoor.Provider,
 	boundsProvider bounds.Provider,
 ) (*Server, error) {
@@ -76,10 +80,28 @@ func New(
 	mux.Handle("/", frontendHandler)
 	logger.WithField("route", "GET /").Info("Registered route")
 
-	// Apply middleware chain: Logging → Metrics → CORS → Recovery
+	// Create rate limiter service if enabled
+	var rateLimiter ratelimit.Service
+	if cfg.RateLimiting.Enabled {
+		rateLimiter = ratelimit.NewService(
+			logger,
+			redisClient.GetClient(),
+			cfg.RateLimiting.FailureMode,
+		)
+		
+		logger.Info("Rate limiting enabled")
+	}
+
+	// Apply middleware chain: Logging → Metrics → CORS → RateLimit → Recovery
 	handler := middleware.Logging(logger)(mux)
 	handler = middleware.Metrics()(handler)
 	handler = middleware.CORS()(handler)
+
+	// Add rate limiting AFTER CORS but BEFORE recovery
+	if cfg.RateLimiting.Enabled {
+		handler = middleware.RateLimit(logger, cfg.RateLimiting, rateLimiter)(handler)
+	}
+
 	handler = middleware.Recovery(logger)(handler)
 
 	// Create HTTP server
@@ -96,6 +118,7 @@ func New(
 		httpServer:            httpServer,
 		proxy:                 proxyHandler,
 		frontend:              frontendHandler,
+		rateLimiter:           rateLimiter,
 		logger:                logger,
 		cartographoorProvider: cartographoorProvider,
 		boundsProvider:        boundsProvider,
@@ -104,6 +127,13 @@ func New(
 
 // Start starts the HTTP server (blocking call).
 func (s *Server) Start() error {
+	// Start rate limiter if enabled
+	if s.rateLimiter != nil {
+		if err := s.rateLimiter.Start(context.Background()); err != nil {
+			return fmt.Errorf("failed to start rate limiter: %w", err)
+		}
+	}
+
 	// Start frontend cache refresh loop
 	if err := s.frontend.Start(context.Background()); err != nil {
 		return fmt.Errorf("failed to start frontend: %w", err)
@@ -129,6 +159,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if s.proxy != nil {
 		if err := s.proxy.Shutdown(); err != nil {
 			s.logger.WithError(err).Error("Error shutting down proxy")
+		}
+	}
+
+	// Shutdown rate limiter
+	if s.rateLimiter != nil {
+		if err := s.rateLimiter.Stop(); err != nil {
+			s.logger.WithError(err).Error("Error shutting down rate limiter")
 		}
 	}
 

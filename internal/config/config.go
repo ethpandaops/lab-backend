@@ -3,8 +3,10 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
@@ -20,6 +22,7 @@ type Config struct {
 	Experiments   map[string]ExperimentSettings `yaml:"experiments"`
 	Cartographoor cartographoor.Config          `yaml:"cartographoor"`
 	Bounds        BoundsConfig                  `yaml:"bounds"`
+	RateLimiting  RateLimitingConfig            `yaml:"rate_limiting"`
 }
 
 // ServerConfig contains HTTP server settings.
@@ -56,6 +59,22 @@ type BoundsConfig struct {
 	RefreshInterval time.Duration `yaml:"refresh_interval"` // How often to refresh bounds
 	RequestTimeout  time.Duration `yaml:"request_timeout"`  // HTTP request timeout
 	BoundsTTL       time.Duration `yaml:"bounds_ttl"`       // Redis TTL for bounds data (0 = no expiration)
+}
+
+// RateLimitingConfig holds rate limiting configuration.
+type RateLimitingConfig struct {
+	Enabled     bool            `yaml:"enabled"`
+	FailureMode string          `yaml:"failure_mode"` // "fail_open" or "fail_closed"
+	ExemptIPs   []string        `yaml:"exempt_ips"`   // CIDR ranges to whitelist
+	Rules       []RateLimitRule `yaml:"rules"`
+}
+
+// RateLimitRule defines a single rate limit rule.
+type RateLimitRule struct {
+	Name        string        `yaml:"name"`
+	PathPattern string        `yaml:"path_pattern"` // Regex pattern
+	Limit       int           `yaml:"limit"`        // Max requests
+	Window      time.Duration `yaml:"window"`       // Time window
 }
 
 // Validate validates the configuration and sets defaults.
@@ -197,6 +216,58 @@ func (c *Config) Validate() error {
 	// Validate bounds config
 	if err := c.Bounds.Validate(); err != nil {
 		return fmt.Errorf("bounds: %w", err)
+	}
+
+	// Validate rate limiting config
+	if c.RateLimiting.Enabled {
+		if err := c.validateRateLimiting(); err != nil {
+			return fmt.Errorf("rate_limiting: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (c *Config) validateRateLimiting() error {
+	if c.RateLimiting.FailureMode != "fail_open" && c.RateLimiting.FailureMode != "fail_closed" {
+		return fmt.Errorf("failure_mode must be 'fail_open' or 'fail_closed'")
+	}
+
+	if len(c.RateLimiting.Rules) == 0 {
+		return fmt.Errorf("rules must have at least one rule")
+	}
+
+	for i, rule := range c.RateLimiting.Rules {
+		if rule.Name == "" {
+			return fmt.Errorf("rules[%d].name is required", i)
+		}
+
+		if rule.PathPattern == "" {
+			return fmt.Errorf("rules[%d].path_pattern is required", i)
+		}
+
+		if rule.Limit <= 0 {
+			return fmt.Errorf("rules[%d].limit must be positive", i)
+		}
+
+		if rule.Window <= 0 {
+			return fmt.Errorf("rules[%d].window must be positive", i)
+		}
+
+		// Validate regex pattern compiles
+		if _, err := regexp.Compile(rule.PathPattern); err != nil {
+			return fmt.Errorf("rules[%d].path_pattern invalid regex: %w", i, err)
+		}
+	}
+
+	// Validate CIDR ranges
+	for i, cidr := range c.RateLimiting.ExemptIPs {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			// Try parsing as single IP
+			if net.ParseIP(cidr) == nil {
+				return fmt.Errorf("exempt_ips[%d] invalid IP or CIDR: %s", i, cidr)
+			}
+		}
 	}
 
 	return nil

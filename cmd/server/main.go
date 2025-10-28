@@ -65,7 +65,7 @@ func main() {
 	}
 
 	// Start HTTP server
-	srv, err := startServer(cfg, logger, svc)
+	srv, err := startServer(cfg, logger, infra, svc)
 	if err != nil {
 		logger.WithError(err).Fatal("Server startup failed")
 	}
@@ -243,9 +243,10 @@ func setupServices(
 func startServer(
 	cfg *config.Config,
 	logger *logrus.Logger,
+	infra *infrastructure,
 	svc *services,
 ) (*server.Server, error) {
-	srv, err := server.New(logger, cfg, svc.cartographoorProvider, svc.boundsProvider)
+	srv, err := server.New(logger, cfg, infra.redisClient, svc.cartographoorProvider, svc.boundsProvider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create server: %w", err)
 	}

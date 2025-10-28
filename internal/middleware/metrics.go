@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 var (
@@ -40,6 +41,31 @@ var (
 			Help: "HTTP response size in bytes",
 		},
 		[]string{"method", "path"},
+	)
+
+	// Rate limiting metrics.
+	RateLimitAllowedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_rate_limit_allowed_total",
+			Help: "Total number of requests allowed by rate limiter",
+		},
+		[]string{"rule", "path_pattern"},
+	)
+
+	RateLimitDeniedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_rate_limit_denied_total",
+			Help: "Total number of requests denied by rate limiter",
+		},
+		[]string{"rule", "path_pattern"},
+	)
+
+	RateLimitErrorsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_rate_limit_errors_total",
+			Help: "Total number of rate limiter errors",
+		},
+		[]string{"error_type"},
 	)
 )
 

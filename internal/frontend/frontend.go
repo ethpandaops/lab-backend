@@ -173,10 +173,8 @@ func (f *Frontend) serveIndex(w http.ResponseWriter, r *http.Request) {
 		"content_length": len(html),
 	}).Debug("Serving route-specific cached index.html")
 
-	// Set no-cache headers for index.html
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Header().Set("Pragma", "no-cache")
-	w.Header().Set("Expires", "0")
+	// Set cache headers for index.html (contains config and bounds data)
+	w.Header().Set("Cache-Control", "public, max-age=1, s-maxage=5, stale-while-revalidate=1")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 

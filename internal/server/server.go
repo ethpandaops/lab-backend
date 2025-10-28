@@ -88,7 +88,7 @@ func New(
 			redisClient.GetClient(),
 			cfg.RateLimiting.FailureMode,
 		)
-		
+
 		logger.Info("Rate limiting enabled")
 	}
 

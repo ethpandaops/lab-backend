@@ -74,7 +74,7 @@ func TestRateLimit_AllowsUnderLimit(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	middleware := RateLimit(cfg, mock, logger)
+	middleware := RateLimit(logger, cfg, mock)
 	wrapped := middleware(handler)
 
 	// Send N requests (all should succeed)
@@ -132,7 +132,7 @@ func TestRateLimit_DeniesOverLimit(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	middleware := RateLimit(cfg, mock, logger)
+	middleware := RateLimit(logger, cfg, mock)
 	wrapped := middleware(handler)
 
 	// Send N requests (should all succeed)
@@ -214,7 +214,7 @@ func TestRateLimit_HeadersPresent(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			middleware := RateLimit(cfg, mock, logger)
+			middleware := RateLimit(logger, cfg, mock)
 			wrapped := middleware(handler)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/test", http.NoBody)
@@ -266,7 +266,7 @@ func TestRateLimit_RetryAfterHeader(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := RateLimit(cfg, mock, logger)
+	middleware := RateLimit(logger, cfg, mock)
 	wrapped := middleware(handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/test", http.NoBody)
@@ -327,7 +327,7 @@ func TestRateLimit_ExemptIP(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := RateLimit(cfg, mock, logger)
+	middleware := RateLimit(logger, cfg, mock)
 	wrapped := middleware(handler)
 
 	exemptIPs := []string{
@@ -399,7 +399,7 @@ func TestRateLimit_RuleMatching(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := RateLimit(cfg, mock, logger)
+	middleware := RateLimit(logger, cfg, mock)
 	wrapped := middleware(handler)
 
 	tests := []struct {
@@ -466,7 +466,7 @@ func TestRateLimit_NoMatchingRule(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := RateLimit(cfg, mock, logger)
+	middleware := RateLimit(logger, cfg, mock)
 	wrapped := middleware(handler)
 
 	// Paths that don't match any rule
@@ -522,7 +522,7 @@ func TestRateLimit_IPExtraction(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := RateLimit(cfg, mock, logger)
+	middleware := RateLimit(logger, cfg, mock)
 	wrapped := middleware(handler)
 
 	tests := []struct {
@@ -626,7 +626,7 @@ func TestRateLimit_RedisError_FailOpen(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	middleware := RateLimit(cfg, mock, logger)
+	middleware := RateLimit(logger, cfg, mock)
 	wrapped := middleware(handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/test", http.NoBody)
@@ -669,7 +669,7 @@ func TestRateLimit_RedisError_FailClosed(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := RateLimit(cfg, mock, logger)
+	middleware := RateLimit(logger, cfg, mock)
 	wrapped := middleware(handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/test", http.NoBody)
@@ -726,7 +726,7 @@ func TestRateLimit_MultipleRulesFirstMatch(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := RateLimit(cfg, mock, logger)
+	middleware := RateLimit(logger, cfg, mock)
 	wrapped := middleware(handler)
 
 	// Should match first (more specific) rule
@@ -787,7 +787,7 @@ func TestRateLimit_Integration_RealScenario(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := RateLimit(cfg, mock, logger)
+	middleware := RateLimit(logger, cfg, mock)
 	wrapped := middleware(handler)
 
 	// Scenario: 3 clients with different behaviors

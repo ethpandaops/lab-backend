@@ -123,13 +123,13 @@ networks:
 # Controls which features are available per network
 # By default, features are enabled for all networks unless explicitly disabled
 features:
-  # Example: Live slots feature - disable for all networks except mainnet
+  # Example: Live slots feature - disable for specific networks
   - path: "/ethereum/live-slots"
     disabled_networks: ["sepolia", "holesky"]
 
-  # Example: Block production feature - disabled for all networks
+  # Example: Block production - enabled for all networks (empty array)
   - path: "/ethereum/block-production"
-    disabled_networks: []  # Empty array, but you'd list all networks to truly disable everywhere
+    disabled_networks: []
 
-  # Example: Attestation performance - enabled for all networks (no disabled_networks specified)
+  # Example: Attestation performance - enabled for all networks (disabled_networks omitted)
   - path: "/ethereum/attestation-performance"

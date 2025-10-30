@@ -119,16 +119,17 @@ networks:
   # Note: Networks from cartographoor are automatically added with all metadata.
   # Only add entries here to disable, override, or add custom networks.
 
-# Experiment feature flags
-# Controls which experiments are available per network
-# By default, experiments are enabled for all networks unless overridden
-experiments:
-  live-slots:
-    enabled: true
-    networks: ["mainnet"]  # Only enabled for mainnet
+# Feature flags
+# Controls which features are available per network
+# By default, features are enabled for all networks unless explicitly disabled
+features:
+  # Example: Live slots feature - disable for all networks except mainnet
+  - path: "/ethereum/live-slots"
+    disabled_networks: ["sepolia", "holesky"]
 
-  block-production:
-    enabled: false         # Disabled for all networks
+  # Example: Block production feature - disabled for all networks
+  - path: "/ethereum/block-production"
+    disabled_networks: []  # Empty array, but you'd list all networks to truly disable everywhere
 
-  attestation-performance:
-    enabled: true          # Enabled for all networks (no networks specified = default)
+  # Example: Attestation performance - enabled for all networks (no disabled_networks specified)
+  - path: "/ethereum/attestation-performance"

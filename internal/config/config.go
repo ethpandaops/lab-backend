@@ -15,14 +15,14 @@ import (
 
 // Config represents the complete application configuration.
 type Config struct {
-	Server        ServerConfig                  `yaml:"server"`
-	Redis         RedisConfig                   `yaml:"redis"`
-	Leader        LeaderConfig                  `yaml:"leader"`
-	Networks      []NetworkConfig               `yaml:"networks"`
-	Experiments   map[string]ExperimentSettings `yaml:"experiments"`
-	Cartographoor cartographoor.Config          `yaml:"cartographoor"`
-	Bounds        BoundsConfig                  `yaml:"bounds"`
-	RateLimiting  RateLimitingConfig            `yaml:"rate_limiting"`
+	Server        ServerConfig         `yaml:"server"`
+	Redis         RedisConfig          `yaml:"redis"`
+	Leader        LeaderConfig         `yaml:"leader"`
+	Networks      []NetworkConfig      `yaml:"networks"`
+	Features      []FeatureSettings    `yaml:"features"`
+	Cartographoor cartographoor.Config `yaml:"cartographoor"`
+	Bounds        BoundsConfig         `yaml:"bounds"`
+	RateLimiting  RateLimitingConfig   `yaml:"rate_limiting"`
 }
 
 // ServerConfig contains HTTP server settings.

@@ -40,6 +40,7 @@ type services struct {
 func main() {
 	// Parse command-line flags
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
+
 	flag.Parse()
 
 	// Setup logger

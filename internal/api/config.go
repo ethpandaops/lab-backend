@@ -84,7 +84,6 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Set headers.
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "public, max-age=1, s-maxage=60, stale-while-revalidate=300")
 
 	// Encode response
 	if err := json.NewEncoder(w).Encode(response); err != nil {

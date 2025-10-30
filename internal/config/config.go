@@ -23,6 +23,7 @@ type Config struct {
 	Cartographoor cartographoor.Config `yaml:"cartographoor"`
 	Bounds        BoundsConfig         `yaml:"bounds"`
 	RateLimiting  RateLimitingConfig   `yaml:"rate_limiting"`
+	Headers       HeadersConfig        `yaml:"headers"`
 }
 
 // ServerConfig contains HTTP server settings.
@@ -75,6 +76,18 @@ type RateLimitRule struct {
 	PathPattern string        `yaml:"path_pattern"` // Regex pattern
 	Limit       int           `yaml:"limit"`        // Max requests
 	Window      time.Duration `yaml:"window"`       // Time window
+}
+
+// HeadersConfig holds HTTP headers configuration.
+type HeadersConfig struct {
+	Policies []HeaderPolicy `yaml:"policies"`
+}
+
+// HeaderPolicy defines headers to set for matching request paths.
+type HeaderPolicy struct {
+	Name        string            `yaml:"name"`         // Policy name for logging/debugging
+	PathPattern string            `yaml:"path_pattern"` // Regex pattern to match request paths
+	Headers     map[string]string `yaml:"headers"`      // Headers to set (key: value)
 }
 
 // Validate validates the configuration and sets defaults.

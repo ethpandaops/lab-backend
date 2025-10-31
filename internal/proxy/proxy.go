@@ -177,9 +177,6 @@ func (p *Proxy) createReverseProxy(
 			}
 		},
 		ModifyResponse: func(r *http.Response) error {
-			// Set cache headers for proxy responses
-			r.Header.Set("Cache-Control", "public, max-age=1, s-maxage=5, stale-while-revalidate=1")
-
 			return nil
 		},
 		Transport: transport,

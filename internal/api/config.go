@@ -24,12 +24,13 @@ type ConfigResponse struct {
 
 // NetworkInfo represents network metadata.
 type NetworkInfo struct {
-	Name         string `json:"name"`         // "mainnet", "sepolia", etc.
-	DisplayName  string `json:"display_name"` // "Mainnet", "Sepolia", etc.
-	ChainID      int64  `json:"chain_id"`
-	GenesisTime  int64  `json:"genesis_time"`
-	GenesisDelay int64  `json:"genesis_delay"` // Genesis delay in seconds
-	Forks        Forks  `json:"forks"`
+	Name         string            `json:"name"`         // "mainnet", "sepolia", etc.
+	DisplayName  string            `json:"display_name"` // "Mainnet", "Sepolia", etc.
+	ChainID      int64             `json:"chain_id"`
+	GenesisTime  int64             `json:"genesis_time"`
+	GenesisDelay int64             `json:"genesis_delay"` // Genesis delay in seconds
+	Forks        Forks             `json:"forks"`
+	ServiceUrls  map[string]string `json:"service_urls"` // Map of service name to URL
 }
 
 // Forks contains fork information for a network (API response format with snake_case).
@@ -123,6 +124,7 @@ func (h *ConfigHandler) buildNetworks(ctx context.Context) []NetworkInfo {
 		var (
 			chainID, genesisTime, genesisDelay int64
 			forks                              Forks
+			serviceUrls                        map[string]string
 		)
 
 		if net.ChainID != nil {
@@ -137,11 +139,13 @@ func (h *ConfigHandler) buildNetworks(ctx context.Context) []NetworkInfo {
 			genesisDelay = *net.GenesisDelay
 		}
 
-		// Get forks from cartographoor if available (forks not in config.yaml yet)
+		// Get forks and serviceUrls from cartographoor if available
 		if h.provider != nil {
 			if cartNet, exists := h.provider.GetNetwork(ctx, net.Name); exists {
 				// Transform cartographoor.Forks to API Forks
 				forks = transformForks(cartNet.Forks)
+				// Copy serviceUrls from cartographoor
+				serviceUrls = cartNet.ServiceUrls
 			}
 		}
 
@@ -161,6 +165,7 @@ func (h *ConfigHandler) buildNetworks(ctx context.Context) []NetworkInfo {
 			GenesisTime:  genesisTime,
 			GenesisDelay: genesisDelay,
 			Forks:        forks,
+			ServiceUrls:  serviceUrls,
 		})
 	}
 

@@ -22,11 +22,12 @@ type CartographoorResponse struct {
 // RawNetwork represents a network entry in the cartographoor JSON.
 // Only parses essential fields - network name comes from map key.
 type RawNetwork struct {
-	Status        string        `json:"status"`
-	ChainID       int64         `json:"chainId"`
-	LastUpdated   time.Time     `json:"lastUpdated"`
-	GenesisConfig GenesisConfig `json:"genesisConfig"`
-	Forks         Forks         `json:"forks"`
+	Status        string            `json:"status"`
+	ChainID       int64             `json:"chainId"`
+	LastUpdated   time.Time         `json:"lastUpdated"`
+	GenesisConfig GenesisConfig     `json:"genesisConfig"`
+	Forks         Forks             `json:"forks"`
+	ServiceUrls   map[string]string `json:"serviceUrls"` // Map of service name to URL
 }
 
 // GenesisConfig contains genesis configuration.
@@ -58,11 +59,12 @@ type Network struct {
 	DisplayName  string
 	Description  string
 	Status       string
-	ChainID      int64  // Integer chain ID
-	GenesisTime  int64  // Unix timestamp
-	GenesisDelay int64  // Genesis delay in seconds
-	Forks        Forks  // Fork information
-	TargetURL    string // CBT API URL constructed from network name
+	ChainID      int64             // Integer chain ID
+	GenesisTime  int64             // Unix timestamp
+	GenesisDelay int64             // Genesis delay in seconds
+	Forks        Forks             // Fork information
+	TargetURL    string            // CBT API URL constructed from network name
+	ServiceUrls  map[string]string // Map of service name to URL
 	LastUpdated  time.Time
 }
 

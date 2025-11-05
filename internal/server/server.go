@@ -15,6 +15,7 @@ import (
 	"github.com/ethpandaops/lab-backend/internal/config"
 	"github.com/ethpandaops/lab-backend/internal/frontend"
 	"github.com/ethpandaops/lab-backend/internal/handlers"
+	"github.com/ethpandaops/lab-backend/internal/headers"
 	"github.com/ethpandaops/lab-backend/internal/middleware"
 	"github.com/ethpandaops/lab-backend/internal/proxy"
 	"github.com/ethpandaops/lab-backend/internal/ratelimit"
@@ -95,8 +96,17 @@ func New(
 		logger.Info("Rate limiting enabled")
 	}
 
-	// Apply middleware chain: Logging → Metrics → CORS → RateLimit → Recovery
+	// Initialize headers manager from config
+	headersManager, err := headers.NewManager(cfg.Headers.Policies)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize headers manager: %w", err)
+	}
+
+	logger.WithField("policies", len(cfg.Headers.Policies)).Info("Headers middleware initialized")
+
+	// Apply middleware chain: Logging → Headers → Metrics → CORS → RateLimit → Recovery
 	handler := middleware.Logging(logger)(mux)
+	handler = middleware.Headers(headersManager, logger.WithField("component", "headers"))(handler)
 	handler = middleware.Metrics()(handler)
 	handler = middleware.CORS()(handler)
 

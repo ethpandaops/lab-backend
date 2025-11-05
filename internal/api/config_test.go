@@ -24,7 +24,7 @@ func TestConfigHandler_ServeHTTP(t *testing.T) {
 		method         string
 		cartoNetworks  map[string]*cartographoor.Network
 		configNetworks []config.NetworkConfig
-		experiments    map[string]config.ExperimentSettings
+		features       []config.FeatureSettings
 		expectedStatus int
 		validateResp   func(t *testing.T, resp *ConfigResponse)
 	}{
@@ -41,10 +41,10 @@ func TestConfigHandler_ServeHTTP(t *testing.T) {
 				},
 			},
 			configNetworks: []config.NetworkConfig{},
-			experiments: map[string]config.ExperimentSettings{
-				"test-experiment": {
-					Enabled:  true,
-					Networks: []string{"mainnet"},
+			features: []config.FeatureSettings{
+				{
+					Path:             "/ethereum/test-feature",
+					DisabledNetworks: []string{"sepolia"},
 				},
 			},
 			expectedStatus: http.StatusOK,
@@ -53,16 +53,16 @@ func TestConfigHandler_ServeHTTP(t *testing.T) {
 
 				require.NotNil(t, resp)
 				assert.Len(t, resp.Networks, 1)
-				assert.Len(t, resp.Experiments, 1)
+				assert.Len(t, resp.Features, 1)
 
 				// Verify network data
 				assert.Equal(t, "mainnet", resp.Networks[0].Name)
 				assert.Equal(t, "Ethereum Mainnet", resp.Networks[0].DisplayName)
 				assert.Equal(t, int64(1), resp.Networks[0].ChainID)
 
-				// Verify experiment data
-				assert.Equal(t, "test-experiment", resp.Experiments[0].Name)
-				assert.True(t, resp.Experiments[0].Enabled)
+				// Verify feature data
+				assert.Equal(t, "/ethereum/test-feature", resp.Features[0].Path)
+				assert.Equal(t, []string{"sepolia"}, resp.Features[0].DisabledNetworks)
 			},
 		},
 		{
@@ -91,7 +91,7 @@ func TestConfigHandler_ServeHTTP(t *testing.T) {
 					Enabled: boolPtr(false),
 				},
 			},
-			experiments:    map[string]config.ExperimentSettings{},
+			features:       []config.FeatureSettings{},
 			expectedStatus: http.StatusOK,
 			validateResp: func(t *testing.T, resp *ConfigResponse) {
 				t.Helper()
@@ -106,14 +106,14 @@ func TestConfigHandler_ServeHTTP(t *testing.T) {
 			method:         http.MethodGet,
 			cartoNetworks:  map[string]*cartographoor.Network{},
 			configNetworks: []config.NetworkConfig{},
-			experiments:    map[string]config.ExperimentSettings{},
+			features:       []config.FeatureSettings{},
 			expectedStatus: http.StatusOK,
 			validateResp: func(t *testing.T, resp *ConfigResponse) {
 				t.Helper()
 
 				require.NotNil(t, resp)
 				assert.Empty(t, resp.Networks)
-				assert.Empty(t, resp.Experiments)
+				assert.Empty(t, resp.Features)
 			},
 		},
 	}
@@ -148,8 +148,8 @@ func TestConfigHandler_ServeHTTP(t *testing.T) {
 			}
 
 			cfg := &config.Config{
-				Networks:    tt.configNetworks,
-				Experiments: tt.experiments,
+				Networks: tt.configNetworks,
+				Features: tt.features,
 			}
 
 			logger := logrus.New()
@@ -313,25 +313,25 @@ func TestConfigHandler_buildNetworks(t *testing.T) {
 	}
 }
 
-func TestConfigHandler_buildExperiments(t *testing.T) {
+func TestConfigHandler_buildFeatures(t *testing.T) {
 	tests := []struct {
-		name        string
-		experiments map[string]config.ExperimentSettings
-		expected    int
+		name     string
+		features []config.FeatureSettings
+		expected int
 	}{
 		{
-			name: "experiments sorted alphabetically",
-			experiments: map[string]config.ExperimentSettings{
-				"zebra":  {Enabled: true},
-				"alpha":  {Enabled: false},
-				"middle": {Enabled: true},
+			name: "features sorted alphabetically by path",
+			features: []config.FeatureSettings{
+				{Path: "/zebra", DisabledNetworks: []string{}},
+				{Path: "/alpha", DisabledNetworks: []string{"mainnet"}},
+				{Path: "/middle", DisabledNetworks: []string{}},
 			},
 			expected: 3,
 		},
 		{
-			name:        "empty experiments",
-			experiments: map[string]config.ExperimentSettings{},
-			expected:    0,
+			name:     "empty features",
+			features: []config.FeatureSettings{},
+			expected: 0,
 		},
 	}
 
@@ -343,7 +343,7 @@ func TestConfigHandler_buildExperiments(t *testing.T) {
 			logger.SetOutput(io.Discard)
 
 			cfg := &config.Config{
-				Experiments: tt.experiments,
+				Features: tt.features,
 			}
 
 			handler := &ConfigHandler{
@@ -351,14 +351,14 @@ func TestConfigHandler_buildExperiments(t *testing.T) {
 				logger: logger,
 			}
 
-			result := handler.buildExperiments(context.Background())
+			result := handler.buildFeatures(context.Background())
 
 			assert.Len(t, result, tt.expected)
 
 			// Verify sorting
 			for i := 1; i < len(result); i++ {
-				assert.True(t, result[i-1].Name < result[i].Name,
-					"experiments should be sorted alphabetically")
+				assert.True(t, result[i-1].Path < result[i].Path,
+					"features should be sorted alphabetically by path")
 			}
 		})
 	}

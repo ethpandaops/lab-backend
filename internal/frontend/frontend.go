@@ -173,8 +173,7 @@ func (f *Frontend) serveIndex(w http.ResponseWriter, r *http.Request) {
 		"content_length": len(html),
 	}).Debug("Serving route-specific cached index.html")
 
-	// Set cache headers for index.html (contains config and bounds data)
-	w.Header().Set("Cache-Control", "public, max-age=1, s-maxage=5, stale-while-revalidate=1")
+	// Set content type for index.html
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 
@@ -219,12 +218,6 @@ func (f *Frontend) setCacheHeaders(w http.ResponseWriter, filePath string) {
 	}
 
 	w.Header().Set("Content-Type", contentType)
-
-	// Static assets get long cache (1 year)
-	// index.html gets no-cache (handled in serveIndex)
-	if !strings.HasSuffix(filePath, "index.html") {
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	}
 }
 
 // refreshLoop listens for bounds and cartographoor update notifications and refreshes the cached index.html.

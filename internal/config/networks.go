@@ -23,10 +23,11 @@ type NetworkConfig struct {
 	GenesisDelay *int64 `yaml:"genesis_delay,omitempty"` // Optional: Genesis delay in seconds
 }
 
-// ExperimentSettings defines settings for a single experiment.
-type ExperimentSettings struct {
-	Enabled  bool     `yaml:"enabled"`
-	Networks []string `yaml:"networks,omitempty"` // Empty/omitted = all networks
+// FeatureSettings defines settings for a single feature.
+// Features are enabled by default for all networks unless explicitly disabled.
+type FeatureSettings struct {
+	Path             string   `yaml:"path"`                        // Feature path (e.g., "/ethereum/data-availability/das-custody")
+	DisabledNetworks []string `yaml:"disabled_networks,omitempty"` // Networks where this feature is disabled
 }
 
 // Validate validates a network configuration.

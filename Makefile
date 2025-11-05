@@ -61,8 +61,9 @@ setup-frontend:
 			RELEASE_TAG=$$(curl -s "https://api.github.com/repos/$(GITHUB_REPO)/releases" | \
 				grep -o '"tag_name": *"[^"]*"' | \
 				grep '"$(FRONTEND_BRANCH)-v' | \
-				head -1 | \
-				sed 's/"tag_name": *"\([^"]*\)"/\1/'); \
+				sed 's/"tag_name": *"\([^"]*\)"/\1/' | \
+				sort -V -r | \
+				head -1); \
 		else \
 			printf "$(YELLOW)Using latest stable release$(RESET)\n"; \
 			RELEASE_TAG=$$(curl -s "https://api.github.com/repos/$(GITHUB_REPO)/releases/latest" | \

@@ -18,8 +18,8 @@ var _ http.Handler = (*ConfigHandler)(nil)
 
 // ConfigResponse is the JSON response for /api/v1/config.
 type ConfigResponse struct {
-	Networks    []NetworkInfo `json:"networks"`
-	Experiments []Experiment  `json:"experiments"`
+	Networks []NetworkInfo `json:"networks"`
+	Features []Feature     `json:"features"`
 }
 
 // NetworkInfo represents network metadata.
@@ -44,11 +44,11 @@ type Fork struct {
 	MinClientVersions map[string]string `json:"min_client_versions"` // Map of client name to version
 }
 
-// Experiment represents experiment configuration.
-type Experiment struct {
-	Name     string   `json:"name"`
-	Enabled  bool     `json:"enabled"`
-	Networks []string `json:"networks"` // empty = all networks
+// Feature represents feature configuration.
+// Features are enabled by default for all networks unless explicitly disabled.
+type Feature struct {
+	Path             string   `json:"path"`
+	DisabledNetworks []string `json:"disabled_networks"`
 }
 
 // ConfigHandler handles /api/v1/config requests.
@@ -85,7 +85,6 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Set headers.
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "public, max-age=1, s-maxage=60, stale-while-revalidate=300")
 
 	// Encode response
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -99,8 +98,8 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // This ensures both endpoints use the same logic and return consistent data.
 func (h *ConfigHandler) GetConfigData(ctx context.Context) ConfigResponse {
 	return ConfigResponse{
-		Networks:    h.buildNetworks(ctx),
-		Experiments: h.buildExperiments(ctx),
+		Networks: h.buildNetworks(ctx),
+		Features: h.buildFeatures(ctx),
 	}
 }
 
@@ -178,28 +177,27 @@ func (h *ConfigHandler) buildNetworks(ctx context.Context) []NetworkInfo {
 	return networks
 }
 
-// buildExperiments converts config experiments map to API response array.
-func (h *ConfigHandler) buildExperiments(_ context.Context) []Experiment {
-	experiments := make([]Experiment, 0, len(h.config.Experiments))
+// buildFeatures converts config features slice to API response array.
+func (h *ConfigHandler) buildFeatures(_ context.Context) []Feature {
+	features := make([]Feature, 0, len(h.config.Features))
 
-	for name, settings := range h.config.Experiments {
-		// Copy networks slice to avoid sharing underlying array
-		networks := make([]string, len(settings.Networks))
-		copy(networks, settings.Networks)
+	for _, feature := range h.config.Features {
+		// Copy disabled_networks slice to avoid sharing underlying array
+		disabledNetworks := make([]string, len(feature.DisabledNetworks))
+		copy(disabledNetworks, feature.DisabledNetworks)
 
-		experiments = append(experiments, Experiment{
-			Name:     name,
-			Enabled:  settings.Enabled,
-			Networks: networks,
+		features = append(features, Feature{
+			Path:             feature.Path,
+			DisabledNetworks: disabledNetworks,
 		})
 	}
 
-	// Sort experiments alphabetically by name for deterministic ordering
-	sort.Slice(experiments, func(i, j int) bool {
-		return experiments[i].Name < experiments[j].Name
+	// Sort features alphabetically by path for deterministic ordering
+	sort.Slice(features, func(i, j int) bool {
+		return features[i].Path < features[j].Path
 	})
 
-	return experiments
+	return features
 }
 
 // transformForks converts cartographoor.Forks to API Forks format (for snake_case output).

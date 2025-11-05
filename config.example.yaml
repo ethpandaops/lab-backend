@@ -119,16 +119,73 @@ networks:
   # Note: Networks from cartographoor are automatically added with all metadata.
   # Only add entries here to disable, override, or add custom networks.
 
-# Experiment feature flags
-# Controls which experiments are available per network
-# By default, experiments are enabled for all networks unless overridden
-experiments:
-  live-slots:
-    enabled: true
-    networks: ["mainnet"]  # Only enabled for mainnet
+# Feature flags
+# Controls which features are available per network
+# By default, features are enabled for all networks unless explicitly disabled
+features:
+  # Example: Live slots feature - disable for specific networks
+  - path: "/ethereum/live-slots"
+    disabled_networks: ["sepolia", "holesky"]
 
-  block-production:
-    enabled: false         # Disabled for all networks
+  # Example: Block production - enabled for all networks (empty array)
+  - path: "/ethereum/block-production"
+    disabled_networks: []
 
-  attestation-performance:
-    enabled: true          # Enabled for all networks (no networks specified = default)
+  # Example: Attestation performance - enabled for all networks (disabled_networks omitted)
+  - path: "/ethereum/attestation-performance"
+
+# HTTP Headers Configuration
+# Allows setting arbitrary HTTP headers per endpoint based on path patterns
+# Policies are evaluated in order - first match wins
+# Use this for Cache-Control, Vary, security headers, custom headers, etc.
+headers:
+  policies:
+    # Static assets (JS, CSS, images, fonts) - aggressive caching
+    # Pattern matches file extensions for immutable assets with content hashing
+    - name: "static_assets"
+      path_pattern: "\\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|ico)$"
+      headers:
+        Cache-Control: "public, max-age=31536000, immutable"
+        # Vary: "Accept-Encoding"  # Example: vary cache on encoding
+
+    # HTML pages (index.html) - minimal caching with stale-while-revalidate
+    # Pattern ensures dynamic content gets refreshed quickly
+    - name: "html_pages"
+      path_pattern: "\\.html$"
+      headers:
+        Cache-Control: "public, max-age=1, s-maxage=5, stale-while-revalidate=1"
+
+    # API config endpoint - moderate CDN caching with long stale window
+    # Config changes infrequently so longer stale serving is acceptable
+    - name: "api_config"
+      path_pattern: "^/api/v1/config$"
+      headers:
+        Cache-Control: "public, max-age=1, s-maxage=60, stale-while-revalidate=300"
+
+    # API proxy responses - short caching with stale-while-revalidate
+    # Proxied API responses should be relatively fresh
+    - name: "api_proxy"
+      path_pattern: "^/api/v1/.+/.+"
+      headers:
+        Cache-Control: "public, max-age=1, s-maxage=5, stale-while-revalidate=1"
+
+    # Health and metrics - no caching
+    # Monitoring endpoints must always be fresh
+    - name: "health_metrics"
+      path_pattern: "^/(health|metrics)$"
+      headers:
+        Cache-Control: "no-cache, no-store, must-revalidate"
+
+    # Example: Custom headers for specific endpoint
+    # - name: "custom_endpoint"
+    #   path_pattern: "^/api/v1/special$"
+    #   headers:
+    #     Cache-Control: "public, max-age=300"
+    #     X-Custom-Header: "my-value"
+    #     Vary: "Accept-Encoding, Accept-Language"
+
+    # Default fallback - minimal caching for everything else
+    - name: "default"
+      path_pattern: ".*"
+      headers:
+        Cache-Control: "public, max-age=1"

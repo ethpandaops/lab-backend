@@ -108,6 +108,7 @@ func (s *Service) processNetworks(
 			GenesisDelay: rawNet.GenesisConfig.GenesisDelay,
 			Forks:        rawNet.Forks,
 			TargetURL:    targetURL,
+			ServiceUrls:  rawNet.ServiceUrls,
 			LastUpdated:  rawNet.LastUpdated,
 		}
 	}

@@ -162,7 +162,7 @@ func (s *Service) fetchBoundsForNetwork(
 	for {
 		// Construct URL with database filter, page size, and optional page token
 		url := fmt.Sprintf(
-			"%s/admin_cbt_incremental?database_eq=%s&page_size=500",
+			"%s/admin_cbt_incremental?database_eq=%s&page_size=10000",
 			network.TargetURL,
 			network.Name,
 		)
@@ -224,10 +224,66 @@ func (s *Service) fetchBoundsForNetwork(
 		"total_records": len(allRecords),
 	}).Debug("Completed fetching all bounds for network")
 
-	// Calculate bounds from all accumulated records
-	bounds := s.calculateBounds(allRecords)
+	// De-duplicate records before calculating bounds
+	dedupedRecords := s.deduplicateRecords(allRecords)
+
+	s.logger.WithFields(logrus.Fields{
+		"network":          network.Name,
+		"before_dedup":     len(allRecords),
+		"after_dedup":      len(dedupedRecords),
+		"duplicates_found": len(allRecords) - len(dedupedRecords),
+	}).Debug("De-duplicated records")
+
+	// Calculate bounds from de-duplicated records
+	bounds := s.calculateBounds(dedupedRecords)
 
 	return bounds, nil
+}
+
+// deduplicateRecords removes duplicate records based on unique key
+// (database, table, position, interval).
+func (s *Service) deduplicateRecords(
+	records []IncrementalTableRecord,
+) []IncrementalTableRecord {
+	if len(records) == 0 {
+		return records
+	}
+
+	// Use a map to track unique records by composite key
+	type recordKey struct {
+		database string
+		table    string
+		position int64
+		interval int64
+	}
+
+	seen := make(map[recordKey]IncrementalTableRecord, len(records))
+
+	for _, record := range records {
+		key := recordKey{
+			database: record.Database,
+			table:    record.Table,
+			position: record.Position,
+			interval: record.Interval,
+		}
+
+		// Keep the record with the latest UpdatedDateTime if duplicates exist
+		if existing, exists := seen[key]; exists {
+			if record.UpdatedDateTime > existing.UpdatedDateTime {
+				seen[key] = record
+			}
+		} else {
+			seen[key] = record
+		}
+	}
+
+	// Convert map back to slice
+	deduplicated := make([]IncrementalTableRecord, 0, len(seen))
+	for _, record := range seen {
+		deduplicated = append(deduplicated, record)
+	}
+
+	return deduplicated
 }
 
 // calculateBounds computes per-table min/max from incremental table records.

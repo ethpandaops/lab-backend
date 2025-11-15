@@ -36,7 +36,7 @@ type services struct {
 	upstreamBounds        *bounds.Service
 	boundsProvider        bounds.Provider
 	wallclockSvc          *wallclock.Service
-	wg                    sync.WaitGroup // Tracks background goroutines
+	wg                    sync.WaitGroup
 }
 
 func main() {
@@ -276,7 +276,6 @@ func setupServices(
 		defer func() {
 			if rec := recover(); rec != nil {
 				logger.WithField("panic", rec).Error("Wallclock sync goroutine panicked")
-				// Panic recovery ensures wg.Done() is called and service continues
 			}
 
 			svc.wg.Done()

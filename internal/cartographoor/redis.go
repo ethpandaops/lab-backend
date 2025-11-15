@@ -159,7 +159,6 @@ func (r *RedisProvider) refreshLoop(ctx context.Context) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			r.log.WithField("panic", rec).Error("Cartographoor refresh loop panicked")
-			// Panic recovery ensures wg.Done() is called and service continues
 		}
 
 		r.wg.Done()

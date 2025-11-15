@@ -226,7 +226,6 @@ func (f *Frontend) refreshLoop(ctx context.Context) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			f.logger.WithField("panic", rec).Error("Frontend refresh loop panicked")
-			// Panic recovery ensures wg.Done() is called and service continues
 		}
 
 		f.wg.Done()

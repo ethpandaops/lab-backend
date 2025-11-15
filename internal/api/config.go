@@ -24,13 +24,14 @@ type ConfigResponse struct {
 
 // NetworkInfo represents network metadata.
 type NetworkInfo struct {
-	Name         string            `json:"name"`         // "mainnet", "sepolia", etc.
-	DisplayName  string            `json:"display_name"` // "Mainnet", "Sepolia", etc.
-	ChainID      int64             `json:"chain_id"`
-	GenesisTime  int64             `json:"genesis_time"`
-	GenesisDelay int64             `json:"genesis_delay"` // Genesis delay in seconds
-	Forks        Forks             `json:"forks"`
-	ServiceUrls  map[string]string `json:"service_urls"` // Map of service name to URL
+	Name         string              `json:"name"`         // "mainnet", "sepolia", etc.
+	DisplayName  string              `json:"display_name"` // "Mainnet", "Sepolia", etc.
+	ChainID      int64               `json:"chain_id"`
+	GenesisTime  int64               `json:"genesis_time"`
+	GenesisDelay int64               `json:"genesis_delay"` // Genesis delay in seconds
+	Forks        Forks               `json:"forks"`
+	ServiceUrls  map[string]string   `json:"service_urls"`            // Map of service name to URL
+	BlobSchedule []BlobScheduleEntry `json:"blob_schedule,omitempty"` // Optional blob schedule
 }
 
 // Forks contains fork information for a network (API response format with snake_case).
@@ -42,6 +43,13 @@ type Forks struct {
 type Fork struct {
 	Epoch             int64             `json:"epoch"`
 	MinClientVersions map[string]string `json:"min_client_versions"` // Map of client name to version
+}
+
+// BlobScheduleEntry represents a single entry in the blob schedule defining
+// the maximum number of blobs per block starting at a specific epoch.
+type BlobScheduleEntry struct {
+	Epoch            int64 `json:"epoch"`
+	MaxBlobsPerBlock int64 `json:"max_blobs_per_block"`
 }
 
 // Feature represents feature configuration.
@@ -125,6 +133,7 @@ func (h *ConfigHandler) buildNetworks(ctx context.Context) []NetworkInfo {
 			chainID, genesisTime, genesisDelay int64
 			forks                              Forks
 			serviceUrls                        map[string]string
+			blobSchedule                       []BlobScheduleEntry
 		)
 
 		if net.ChainID != nil {
@@ -139,13 +148,15 @@ func (h *ConfigHandler) buildNetworks(ctx context.Context) []NetworkInfo {
 			genesisDelay = *net.GenesisDelay
 		}
 
-		// Get forks and serviceUrls from cartographoor if available
+		// Get forks, serviceUrls, and blobSchedule from cartographoor if available
 		if h.provider != nil {
 			if cartNet, exists := h.provider.GetNetwork(ctx, net.Name); exists {
 				// Transform cartographoor.Forks to API Forks
 				forks = transformForks(cartNet.Forks)
 				// Copy serviceUrls from cartographoor
 				serviceUrls = cartNet.ServiceUrls
+				// Transform blobSchedule from cartographoor
+				blobSchedule = transformBlobSchedule(cartNet.BlobSchedule)
 			}
 		}
 
@@ -166,6 +177,7 @@ func (h *ConfigHandler) buildNetworks(ctx context.Context) []NetworkInfo {
 			GenesisDelay: genesisDelay,
 			Forks:        forks,
 			ServiceUrls:  serviceUrls,
+			BlobSchedule: blobSchedule,
 		})
 	}
 
@@ -213,4 +225,21 @@ func transformForks(cartForks cartographoor.Forks) Forks {
 	return Forks{
 		Consensus: consensus,
 	}
+}
+
+// transformBlobSchedule converts cartographoor.BlobScheduleEntry to API BlobScheduleEntry format (for snake_case output).
+func transformBlobSchedule(cartSchedule []cartographoor.BlobScheduleEntry) []BlobScheduleEntry {
+	if cartSchedule == nil {
+		return nil
+	}
+
+	schedule := make([]BlobScheduleEntry, len(cartSchedule))
+	for i, entry := range cartSchedule {
+		schedule[i] = BlobScheduleEntry{
+			Epoch:            entry.Epoch,
+			MaxBlobsPerBlock: entry.MaxBlobsPerBlock,
+		}
+	}
+
+	return schedule
 }

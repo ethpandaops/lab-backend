@@ -22,12 +22,13 @@ type CartographoorResponse struct {
 // RawNetwork represents a network entry in the cartographoor JSON.
 // Only parses essential fields - network name comes from map key.
 type RawNetwork struct {
-	Status        string            `json:"status"`
-	ChainID       int64             `json:"chainId"`
-	LastUpdated   time.Time         `json:"lastUpdated"`
-	GenesisConfig GenesisConfig     `json:"genesisConfig"`
-	Forks         Forks             `json:"forks"`
-	ServiceUrls   map[string]string `json:"serviceUrls"` // Map of service name to URL
+	Status        string              `json:"status"`
+	ChainID       int64               `json:"chainId"`
+	LastUpdated   time.Time           `json:"lastUpdated"`
+	GenesisConfig GenesisConfig       `json:"genesisConfig"`
+	Forks         Forks               `json:"forks"`
+	ServiceUrls   map[string]string   `json:"serviceUrls"`            // Map of service name to URL
+	BlobSchedule  []BlobScheduleEntry `json:"blobSchedule,omitempty"` // Optional blob schedule
 }
 
 // GenesisConfig contains genesis configuration.
@@ -47,6 +48,13 @@ type Fork struct {
 	MinClientVersions map[string]string `json:"minClientVersions"` // Map of client name to version (camelCase to match cartographoor JSON)
 }
 
+// BlobScheduleEntry represents a single entry in the blob schedule defining
+// the maximum number of blobs per block starting at a specific epoch.
+type BlobScheduleEntry struct {
+	Epoch            int64 `json:"epoch"`
+	MaxBlobsPerBlock int64 `json:"maxBlobsPerBlock"`
+}
+
 // NetworkMetadata contains display information for networks.
 type NetworkMetadata struct {
 	DisplayName string `json:"displayName"`
@@ -59,12 +67,13 @@ type Network struct {
 	DisplayName  string
 	Description  string
 	Status       string
-	ChainID      int64             // Integer chain ID
-	GenesisTime  int64             // Unix timestamp
-	GenesisDelay int64             // Genesis delay in seconds
-	Forks        Forks             // Fork information
-	TargetURL    string            // CBT API URL constructed from network name
-	ServiceUrls  map[string]string // Map of service name to URL
+	ChainID      int64               // Integer chain ID
+	GenesisTime  int64               // Unix timestamp
+	GenesisDelay int64               // Genesis delay in seconds
+	Forks        Forks               // Fork information
+	TargetURL    string              // CBT API URL constructed from network name
+	ServiceUrls  map[string]string   // Map of service name to URL
+	BlobSchedule []BlobScheduleEntry // Optional blob schedule defining max blobs per block at different epochs
 	LastUpdated  time.Time
 }
 

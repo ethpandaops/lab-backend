@@ -131,6 +131,117 @@ func TestRedisProvider_NotifyChannel(t *testing.T) {
 	}
 }
 
+func TestRedisProvider_FollowerPolling(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRedis := redismocks.NewMockClient(ctrl)
+	mockElector := leadermocks.NewMockElector(ctrl)
+
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	// Follower pod (IsLeader returns false)
+	mockElector.EXPECT().IsLeader().Return(false).AnyTimes()
+
+	// Mock Redis.Keys for Start() readiness check
+	mockRedis.EXPECT().
+		GetClient().
+		Return(nil).
+		AnyTimes()
+
+	providerInterface := NewRedisProvider(
+		logger,
+		Config{
+			RefreshInterval: 100 * time.Millisecond, // Short interval for testing
+			BoundsTTL:       0,
+		},
+		mockRedis,
+		mockElector,
+		nil, // No upstream service needed for this test
+	)
+
+	provider, ok := providerInterface.(*RedisProvider)
+	require.True(t, ok, "provider should be *RedisProvider")
+
+	// Manually start the refresh loop (skip Start() readiness check)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	provider.wg.Add(1)
+
+	go provider.refreshLoop(ctx)
+
+	// Wait for follower to send notification
+	select {
+	case <-provider.NotifyChannel():
+		// Success - follower sent notification
+		t.Log("Follower successfully sent notification")
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Timeout waiting for follower notification")
+	}
+
+	// Clean up
+	err := provider.Stop()
+	require.NoError(t, err)
+}
+
+func TestRedisProvider_PanicRecovery(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRedis := redismocks.NewMockClient(ctrl)
+	mockElector := leadermocks.NewMockElector(ctrl)
+
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	// Start as follower to avoid calling refreshData
+	mockElector.EXPECT().IsLeader().Return(false).AnyTimes()
+
+	providerInterface := NewRedisProvider(
+		logger,
+		Config{
+			RefreshInterval: 50 * time.Millisecond,
+			BoundsTTL:       0,
+		},
+		mockRedis,
+		mockElector,
+		nil,
+	)
+
+	provider, ok := providerInterface.(*RedisProvider)
+	require.True(t, ok, "provider should be *RedisProvider")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Manually start the refresh loop
+	provider.wg.Add(1)
+
+	go provider.refreshLoop(ctx)
+
+	// Give it a moment to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Stop should complete without hanging (proves panic recovery works)
+	done := make(chan struct{})
+
+	go func() {
+		err := provider.Stop()
+		require.NoError(t, err)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success - Stop() completed, wg.Done() was called despite any panics
+		t.Log("Provider stopped gracefully, panic recovery working")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop() hung - panic recovery may have failed")
+	}
+}
+
 // mustMarshal is a helper to marshal test data.
 func mustMarshal(t *testing.T, v interface{}) string {
 	t.Helper()

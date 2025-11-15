@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -35,6 +36,7 @@ type services struct {
 	upstreamBounds        *bounds.Service
 	boundsProvider        bounds.Provider
 	wallclockSvc          *wallclock.Service
+	wg                    sync.WaitGroup
 }
 
 func main() {
@@ -268,7 +270,17 @@ func setupServices(
 	logger.WithField("networks", len(networks)).Info("Wallclock service started")
 
 	// Sync wallclocks when cartographoor updates
+	svc.wg.Add(1)
+
 	go func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				logger.WithField("panic", rec).Error("Wallclock sync goroutine panicked")
+			}
+
+			svc.wg.Done()
+		}()
+
 		notifyChan := svc.cartographoorProvider.NotifyChannel()
 
 		for {
@@ -370,6 +382,10 @@ func shutdownGracefully(
 			logger.WithError(err).Error("Error stopping wallclock service")
 		}
 	}
+
+	// Wait for all service background goroutines to finish
+	logger.Debug("Waiting for service background goroutines to finish")
+	svc.wg.Wait()
 
 	// Stop leader election (releases lock)
 	if err := infra.elector.Stop(); err != nil {

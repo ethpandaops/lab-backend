@@ -168,10 +168,21 @@ func (r *RedisProvider) NotifyChannel() <-chan struct{} {
 }
 
 func (r *RedisProvider) refreshLoop(ctx context.Context) {
-	defer r.wg.Done()
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.log.WithField("panic", rec).Error("Bounds refresh loop panicked")
+		}
+
+		r.wg.Done()
+	}()
 
 	ticker := time.NewTicker(r.cfg.RefreshInterval)
 	defer ticker.Stop()
+
+	// Follower polling ticker - notifies frontend to check Redis for updates
+	// This ensures follower pods update their in-memory cache when leader updates Redis
+	followerPollTicker := time.NewTicker(r.cfg.RefreshInterval)
+	defer followerPollTicker.Stop()
 
 	// Give leader election a moment to settle.
 	time.Sleep(100 * time.Millisecond)
@@ -192,7 +203,24 @@ func (r *RedisProvider) refreshLoop(ctx context.Context) {
 			if r.elector.IsLeader() {
 				r.refreshData(ctx)
 			}
+		case <-followerPollTicker.C:
+			// Followers notify their frontend to re-read from Redis
+			// This ensures all pods stay in sync with Redis state
+			if !r.elector.IsLeader() {
+				r.notifyFollowers()
+			}
 		}
+	}
+}
+
+// notifyFollowers sends a notification to the frontend to refresh from Redis.
+// This is used by follower pods to stay in sync with Redis updates from the leader.
+func (r *RedisProvider) notifyFollowers() {
+	select {
+	case r.notifyChan <- struct{}{}:
+		r.log.Debug("Notified frontend to refresh from Redis (follower)")
+	default:
+		// Channel already has a pending notification, skip
 	}
 }
 

@@ -223,7 +223,14 @@ func (f *Frontend) setCacheHeaders(w http.ResponseWriter, filePath string) {
 // refreshLoop listens for bounds and cartographoor update notifications and refreshes the cached index.html.
 // This ensures the frontend cache stays in sync with data updates (event-driven).
 func (f *Frontend) refreshLoop(ctx context.Context) {
-	defer f.wg.Done()
+	defer func() {
+		if rec := recover(); rec != nil {
+			f.logger.WithField("panic", rec).Error("Frontend refresh loop panicked")
+			// Panic recovery ensures wg.Done() is called and service continues
+		}
+
+		f.wg.Done()
+	}()
 
 	// Get notification channels from providers
 	var boundsNotifyChan <-chan struct{}

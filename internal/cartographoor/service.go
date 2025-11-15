@@ -109,6 +109,7 @@ func (s *Service) processNetworks(
 			Forks:        rawNet.Forks,
 			TargetURL:    targetURL,
 			ServiceUrls:  rawNet.ServiceUrls,
+			BlobSchedule: rawNet.BlobSchedule,
 			LastUpdated:  rawNet.LastUpdated,
 		}
 	}

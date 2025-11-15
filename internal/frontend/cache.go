@@ -25,6 +25,7 @@ func (ric *RouteIndexCache) PrewarmRoutes(
 	filesystem fs.FS,
 	configData interface{},
 	boundsData interface{},
+	versionData interface{},
 ) error {
 	// Open and read index.html
 	file, err := filesystem.Open(indexFileName)
@@ -73,8 +74,8 @@ func (ric *RouteIndexCache) PrewarmRoutes(
 			continue
 		}
 
-		// Inject config, bounds, and route-specific head
-		injected, injectErr := InjectAll(original, configData, boundsData, routeHead.Raw)
+		// Inject config, bounds, version, and route-specific head
+		injected, injectErr := InjectAll(original, configData, boundsData, versionData, routeHead.Raw)
 		if injectErr != nil {
 			logger.WithError(injectErr).WithField("route", route).Error("Failed to inject data for route")
 
@@ -89,7 +90,7 @@ func (ric *RouteIndexCache) PrewarmRoutes(
 	}
 
 	// Create default version with _default head (if exists) or empty
-	defaultInjected, err := InjectAll(original, configData, boundsData, defaultHeadRaw)
+	defaultInjected, err := InjectAll(original, configData, boundsData, versionData, defaultHeadRaw)
 	if err != nil {
 		return fmt.Errorf("failed to create default injected HTML: %w", err)
 	}
@@ -132,10 +133,11 @@ func (ric *RouteIndexCache) GetForRoute(route string) []byte {
 	return ric.original
 }
 
-// Update refreshes all cached routes with new config and bounds data.
+// Update refreshes all cached routes with new config, bounds, and version data.
 func (ric *RouteIndexCache) Update(
 	configData interface{},
 	boundsData interface{},
+	versionData interface{},
 ) error {
 	ric.mu.Lock()
 	defer ric.mu.Unlock()
@@ -153,8 +155,8 @@ func (ric *RouteIndexCache) Update(
 			continue
 		}
 
-		// Inject config, bounds, and route-specific head
-		injected, err := InjectAll(ric.original, configData, boundsData, routeHead.Raw)
+		// Inject config, bounds, version, and route-specific head
+		injected, err := InjectAll(ric.original, configData, boundsData, versionData, routeHead.Raw)
 		if err != nil {
 			return fmt.Errorf("failed to inject data for route %s: %w", route, err)
 		}
@@ -162,7 +164,7 @@ func (ric *RouteIndexCache) Update(
 		newRoutes[route] = injected
 	}
 
-	defaultInjected, err := InjectAll(ric.original, configData, boundsData, defaultHeadRaw)
+	defaultInjected, err := InjectAll(ric.original, configData, boundsData, versionData, defaultHeadRaw)
 	if err != nil {
 		return fmt.Errorf("failed to create default injected HTML: %w", err)
 	}

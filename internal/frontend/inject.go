@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-// InjectConfigAndBounds injects both config and bounds JSON into HTML head in a single script tag.
-// Finds <head> tag and inserts: <script>window.__CONFIG__={...}; window.__BOUNDS__={...};</script>.
-func InjectConfigAndBounds(htmlContent []byte, configData interface{}, boundsData interface{}) ([]byte, error) {
+// InjectConfigAndBounds injects config, bounds, and version JSON into HTML head in a single script tag.
+// Finds <head> tag and inserts: <script>window.__CONFIG__={...}; window.__BOUNDS__={...}; window.__VERSION__={...};</script>.
+func InjectConfigAndBounds(htmlContent []byte, configData interface{}, boundsData interface{}, versionData interface{}) ([]byte, error) {
 	// Serialize config to JSON
 	configJSON, err := json.Marshal(configData)
 	if err != nil {
@@ -22,16 +22,24 @@ func InjectConfigAndBounds(htmlContent []byte, configData interface{}, boundsDat
 		return nil, fmt.Errorf("failed to marshal bounds: %w", err)
 	}
 
+	// Serialize version to JSON
+	versionJSON, err := json.Marshal(versionData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal version: %w", err)
+	}
+
 	// Escape for script tag safety (prevent </script> injection)
 	// Replace </ with <\/ to prevent premature script tag closure
 	safeConfigJSON := strings.ReplaceAll(string(configJSON), "</", `<\/`)
 	safeBoundsJSON := strings.ReplaceAll(string(boundsJSON), "</", `<\/`)
+	safeVersionJSON := strings.ReplaceAll(string(versionJSON), "</", `<\/`)
 
-	// Create combined script tag with both config and bounds
+	// Create combined script tag with config, bounds, and version
 	scriptTag := fmt.Sprintf(
-		"\n    <script>\n      window.__CONFIG__ = %s;\n      window.__BOUNDS__ = %s;\n    </script>\n",
+		"\n    <script>\n      window.__CONFIG__ = %s;\n      window.__BOUNDS__ = %s;\n      window.__VERSION__ = %s;\n    </script>\n",
 		safeConfigJSON,
 		safeBoundsJSON,
+		safeVersionJSON,
 	)
 
 	// Find <head> tag and insert script after it
@@ -52,12 +60,12 @@ func InjectConfigAndBounds(htmlContent []byte, configData interface{}, boundsDat
 	return result, nil
 }
 
-// InjectAll injects config, bounds, and route-specific head HTML into the HTML head.
-// This inserts both the script tag with window.__CONFIG__ and window.__BOUNDS__,
+// InjectAll injects config, bounds, version, and route-specific head HTML into the HTML head.
+// This inserts both the script tag with window.__CONFIG__, window.__BOUNDS__, and window.__VERSION__,
 // and the raw head HTML for the specific route.
-func InjectAll(htmlContent []byte, configData interface{}, boundsData interface{}, headRaw string) ([]byte, error) {
-	// First inject config and bounds
-	result, err := InjectConfigAndBounds(htmlContent, configData, boundsData)
+func InjectAll(htmlContent []byte, configData interface{}, boundsData interface{}, versionData interface{}, headRaw string) ([]byte, error) {
+	// First inject config, bounds, and version
+	result, err := InjectConfigAndBounds(htmlContent, configData, boundsData, versionData)
 	if err != nil {
 		return nil, err
 	}

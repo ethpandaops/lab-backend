@@ -16,6 +16,7 @@ import (
 	"github.com/ethpandaops/lab-backend/internal/api"
 	"github.com/ethpandaops/lab-backend/internal/bounds"
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
+	"github.com/ethpandaops/lab-backend/internal/version"
 	"github.com/ethpandaops/lab-backend/web"
 )
 
@@ -61,10 +62,11 @@ func New(
 	ctx := context.Background()
 	configData := configHandler.GetConfigData(ctx)
 	boundsData := buildBoundsData(ctx, boundsProvider)
+	versionData := version.GetWithFrontend()
 
 	// Create route-specific cache
 	routeCache := &RouteIndexCache{}
-	if err := routeCache.PrewarmRoutes(log, embedFS, configData, boundsData); err != nil {
+	if err := routeCache.PrewarmRoutes(log, embedFS, configData, boundsData, versionData); err != nil {
 		return nil, fmt.Errorf("failed to prewarm route cache: %w", err)
 	}
 
@@ -262,16 +264,17 @@ func (f *Frontend) refreshLoop(ctx context.Context) {
 	}
 }
 
-// refreshCache fetches fresh config and bounds data and updates the route cache.
+// refreshCache fetches fresh config, bounds, and version data and updates the route cache.
 func (f *Frontend) refreshCache(ctx context.Context) {
-	f.logger.Debug("Refreshing frontend cache with latest config and bounds data")
+	f.logger.Debug("Refreshing frontend cache with latest config, bounds, and version data")
 
 	// Fetch fresh data
 	configData := f.configHandler.GetConfigData(ctx)
 	boundsData := buildBoundsData(ctx, f.boundsProvider)
+	versionData := version.GetWithFrontend()
 
 	// Update route-specific cache
-	if err := f.routeCache.Update(configData, boundsData); err != nil {
+	if err := f.routeCache.Update(configData, boundsData, versionData); err != nil {
 		f.logger.WithError(err).Error("Failed to update route cache")
 
 		return

@@ -3,6 +3,8 @@ package version
 
 import (
 	"fmt"
+	"os"
+	"strings"
 )
 
 var (
@@ -14,9 +16,10 @@ var (
 
 // Info contains version information.
 type Info struct {
-	Version   string `json:"version"`
-	GitCommit string `json:"git_commit"`
-	BuildDate string `json:"build_date"`
+	Version         string `json:"version"`
+	GitCommit       string `json:"git_commit"`
+	BuildDate       string `json:"build_date"`
+	FrontendVersion string `json:"frontend_version,omitempty"`
 }
 
 // Get returns version information as a struct.
@@ -26,6 +29,26 @@ func Get() Info {
 		GitCommit: GitCommit,
 		BuildDate: BuildDate,
 	}
+}
+
+// GetWithFrontend returns version information including frontend version.
+// It reads the frontend version from .tmp/frontend-version.txt if it exists.
+func GetWithFrontend() Info {
+	info := Get()
+	info.FrontendVersion = readFrontendVersion()
+
+	return info
+}
+
+// readFrontendVersion reads the frontend version from .tmp/frontend-version.txt.
+// Returns empty string if the file doesn't exist or can't be read.
+func readFrontendVersion() string {
+	data, err := os.ReadFile(".tmp/frontend-version.txt")
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(data))
 }
 
 // Short returns a short version string.

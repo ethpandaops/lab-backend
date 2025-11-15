@@ -54,6 +54,7 @@ setup-frontend:
 		rm -rf $(FRONTEND_TARGET); \
 		mkdir -p $(FRONTEND_TARGET); \
 		cp -r $(FRONTEND_SOURCE)/dist/* $(FRONTEND_TARGET)/; \
+		echo "dev" > $(FRONTEND_VERSION_FILE); \
 		printf "$(GREEN)✓ Copied $(FRONTEND_SOURCE)/dist -> $(FRONTEND_TARGET)$(RESET)\n"; \
 	else \
 		if [ -n "$(FRONTEND_BRANCH)" ]; then \

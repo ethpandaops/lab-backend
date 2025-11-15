@@ -19,6 +19,7 @@ func TestRouteIndexCache_PrewarmRoutes(t *testing.T) {
 		filesystem  fs.FS
 		configData  interface{}
 		boundsData  interface{}
+		versionData interface{}
 		expectError bool
 		errorMsg    string
 	}{
@@ -38,6 +39,7 @@ func TestRouteIndexCache_PrewarmRoutes(t *testing.T) {
 			},
 			configData:  map[string]string{"version": "1.0"},
 			boundsData:  map[string]int{"max": 100},
+			versionData: map[string]string{"version": "v1.0.0"},
 			expectError: false,
 		},
 		{
@@ -49,6 +51,7 @@ func TestRouteIndexCache_PrewarmRoutes(t *testing.T) {
 			},
 			configData:  map[string]string{"version": "1.0"},
 			boundsData:  map[string]int{"max": 100},
+			versionData: map[string]string{"version": "v1.0.0"},
 			expectError: false,
 		},
 		{
@@ -60,6 +63,7 @@ func TestRouteIndexCache_PrewarmRoutes(t *testing.T) {
 			},
 			configData:  map[string]string{},
 			boundsData:  map[string]string{},
+			versionData: map[string]string{},
 			expectError: true,
 			errorMsg:    "failed to open index.html",
 		},
@@ -72,6 +76,7 @@ func TestRouteIndexCache_PrewarmRoutes(t *testing.T) {
 			},
 			configData:  map[string]string{},
 			boundsData:  map[string]string{},
+			versionData: map[string]string{},
 			expectError: true,
 			errorMsg:    "failed to create default injected HTML",
 		},
@@ -87,6 +92,7 @@ func TestRouteIndexCache_PrewarmRoutes(t *testing.T) {
 			},
 			configData:  map[string]string{},
 			boundsData:  map[string]string{},
+			versionData: map[string]string{},
 			expectError: true,
 			errorMsg:    "failed to parse head.json",
 		},
@@ -103,6 +109,7 @@ func TestRouteIndexCache_PrewarmRoutes(t *testing.T) {
 				tt.filesystem,
 				tt.configData,
 				tt.boundsData,
+				tt.versionData,
 			)
 
 			if tt.expectError {
@@ -152,6 +159,7 @@ func TestRouteIndexCache_GetForRoute(t *testing.T) {
 		filesystem,
 		map[string]string{"test": "data"},
 		map[string]string{},
+		map[string]string{"version": "v1.0.0"},
 	)
 	require.NoError(t, err)
 
@@ -200,6 +208,7 @@ func TestRouteIndexCache_GetOriginal(t *testing.T) {
 		filesystem,
 		map[string]string{},
 		map[string]string{},
+		map[string]string{},
 	)
 	require.NoError(t, err)
 
@@ -233,6 +242,7 @@ func TestRouteIndexCache_Update(t *testing.T) {
 		filesystem,
 		map[string]string{"version": "1.0"},
 		map[string]string{},
+		map[string]string{"version": "v1.0.0"},
 	)
 	require.NoError(t, err)
 
@@ -243,6 +253,7 @@ func TestRouteIndexCache_Update(t *testing.T) {
 	err = cache.Update(
 		map[string]string{"version": "2.0"},
 		map[string]int{"max": 200},
+		map[string]string{"version": "v2.0.0"},
 	)
 	require.NoError(t, err)
 
@@ -265,7 +276,7 @@ func TestRouteIndexCache_Update_InvalidHTML(t *testing.T) {
 	cache.headData = make(HeadData)
 	cache.mu.Unlock()
 
-	err := cache.Update(map[string]string{}, map[string]string{})
+	err := cache.Update(map[string]string{}, map[string]string{}, map[string]string{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create default injected HTML")
 }
@@ -295,6 +306,7 @@ func TestRouteIndexCache_ConcurrentAccess(t *testing.T) {
 		filesystem,
 		map[string]string{"initial": "data"},
 		map[string]string{},
+		map[string]string{"version": "v1.0.0"},
 	)
 	require.NoError(t, err)
 
@@ -334,7 +346,7 @@ func TestRouteIndexCache_ConcurrentAccess(t *testing.T) {
 					"writer": fmt.Sprintf("writer-%d", id),
 					"iter":   fmt.Sprintf("%d", j),
 				}
-				err := cache.Update(config, map[string]string{})
+				err := cache.Update(config, map[string]string{}, map[string]string{"version": "v1.0.0"})
 				assert.NoError(t, err)
 			}
 		}(i)

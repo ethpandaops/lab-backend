@@ -98,11 +98,18 @@ func setupLogger() *logrus.Logger {
 		FullTimestamp: true,
 	})
 
-	logger.WithFields(logrus.Fields{
-		"version":    version.Short(),
-		"git_commit": version.GitCommit,
-		"build_date": version.BuildDate,
-	}).Info("Starting...")
+	versionInfo := version.GetWithFrontend()
+	fields := logrus.Fields{
+		"version":    versionInfo.Version,
+		"git_commit": versionInfo.GitCommit,
+		"build_date": versionInfo.BuildDate,
+	}
+
+	if versionInfo.FrontendVersion != "" {
+		fields["frontend_version"] = versionInfo.FrontendVersion
+	}
+
+	logger.WithFields(fields).Info("Starting...")
 
 	return logger
 }

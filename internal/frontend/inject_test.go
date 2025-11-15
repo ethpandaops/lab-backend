@@ -14,29 +14,34 @@ func TestInjectConfigAndBounds(t *testing.T) {
 		html        string
 		config      interface{}
 		bounds      interface{}
+		version     interface{}
 		expectError bool
 		errorMsg    string
 		contains    []string
 	}{
 		{
-			name:   "valid injection with simple data",
-			html:   "<html><head></head><body></body></html>",
-			config: map[string]string{"version": "1.0"},
-			bounds: map[string]int{"max": 100},
+			name:    "valid injection with simple data",
+			html:    "<html><head></head><body></body></html>",
+			config:  map[string]string{"version": "1.0"},
+			bounds:  map[string]int{"max": 100},
+			version: map[string]string{"version": "v1.0.0", "git_commit": "abc123"},
 			contains: []string{
 				"window.__CONFIG__",
 				"window.__BOUNDS__",
+				"window.__VERSION__",
 				`"version":"1.0"`,
 				`"max":100`,
+				`"git_commit":"abc123"`,
 				"<script>",
 				"</script>",
 			},
 		},
 		{
-			name:   "injection preserves HTML structure",
-			html:   "<html><head><title>Test</title></head><body></body></html>",
-			config: map[string]string{"test": "data"},
-			bounds: map[string]string{},
+			name:    "injection preserves HTML structure",
+			html:    "<html><head><title>Test</title></head><body></body></html>",
+			config:  map[string]string{"test": "data"},
+			bounds:  map[string]string{},
+			version: map[string]string{"version": "v1.0.0"},
 			contains: []string{
 				"<head>",
 				"<title>Test</title>",
@@ -49,24 +54,28 @@ func TestInjectConfigAndBounds(t *testing.T) {
 			html:        "<html><body></body></html>",
 			config:      map[string]string{},
 			bounds:      map[string]string{},
+			version:     map[string]string{},
 			expectError: true,
 			errorMsg:    "could not find <head> tag",
 		},
 		{
-			name:   "empty config and bounds",
-			html:   "<html><head></head></html>",
-			config: map[string]string{},
-			bounds: map[string]string{},
+			name:    "empty config and bounds",
+			html:    "<html><head></head></html>",
+			config:  map[string]string{},
+			bounds:  map[string]string{},
+			version: map[string]string{},
 			contains: []string{
 				"window.__CONFIG__ = {}",
 				"window.__BOUNDS__ = {}",
+				"window.__VERSION__ = {}",
 			},
 		},
 		{
-			name:   "special characters are escaped",
-			html:   "<html><head></head></html>",
-			config: map[string]string{"name": "</script><script>alert('xss')</script>"},
-			bounds: map[string]string{},
+			name:    "special characters are escaped",
+			html:    "<html><head></head></html>",
+			config:  map[string]string{"name": "</script><script>alert('xss')</script>"},
+			bounds:  map[string]string{},
+			version: map[string]string{},
 			contains: []string{
 				`\u003c/script\u003e`, // JSON escapes < and > as Unicode
 			},
@@ -81,9 +90,11 @@ func TestInjectConfigAndBounds(t *testing.T) {
 			bounds: map[string]interface{}{
 				"mainnet": map[string]int{"min": 0, "max": 1000},
 			},
+			version: map[string]string{"version": "v2.0.0"},
 			contains: []string{
 				"window.__CONFIG__",
 				"window.__BOUNDS__",
+				"window.__VERSION__",
 				"networks",
 				"mainnet",
 			},
@@ -93,14 +104,16 @@ func TestInjectConfigAndBounds(t *testing.T) {
 			html:        "",
 			config:      map[string]string{},
 			bounds:      map[string]string{},
+			version:     map[string]string{},
 			expectError: true,
 			errorMsg:    "could not find <head> tag",
 		},
 		{
-			name:   "multiple head tags uses first one",
-			html:   "<html><head></head><body><head></head></body></html>",
-			config: map[string]string{"test": "data"},
-			bounds: map[string]string{},
+			name:    "multiple head tags uses first one",
+			html:    "<html><head></head><body><head></head></body></html>",
+			config:  map[string]string{"test": "data"},
+			bounds:  map[string]string{},
+			version: map[string]string{},
 			contains: []string{
 				"window.__CONFIG__",
 			},
@@ -109,7 +122,7 @@ func TestInjectConfigAndBounds(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := InjectConfigAndBounds([]byte(tt.html), tt.config, tt.bounds)
+			result, err := InjectConfigAndBounds([]byte(tt.html), tt.config, tt.bounds, tt.version)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -167,10 +180,16 @@ func TestInjectAll(t *testing.T) {
 		},
 	}
 
-	t.Run("injects config, bounds, and head raw", func(t *testing.T) {
+	versionData := map[string]interface{}{
+		"version":    "v1.0.0",
+		"git_commit": "abc123",
+		"build_date": "2024-01-01",
+	}
+
+	t.Run("injects config, bounds, version, and head raw", func(t *testing.T) {
 		headRaw := `<meta property="og:title" content="Test Page">`
 
-		result, err := InjectAll(htmlContent, configData, boundsData, headRaw)
+		result, err := InjectAll(htmlContent, configData, boundsData, versionData, headRaw)
 		require.NoError(t, err)
 
 		// Check config injection
@@ -181,6 +200,10 @@ func TestInjectAll(t *testing.T) {
 		assert.Contains(t, string(result), "window.__BOUNDS__")
 		assert.Contains(t, string(result), `"mainnet"`)
 
+		// Check version injection
+		assert.Contains(t, string(result), "window.__VERSION__")
+		assert.Contains(t, string(result), `"git_commit":"abc123"`)
+
 		// Check head raw injection
 		assert.Contains(t, string(result), headRaw)
 
@@ -190,13 +213,14 @@ func TestInjectAll(t *testing.T) {
 		assert.True(t, headRawIdx < headCloseIdx, "head raw should be before </head>")
 	})
 
-	t.Run("injects only config and bounds when headRaw is empty", func(t *testing.T) {
-		result, err := InjectAll(htmlContent, configData, boundsData, "")
+	t.Run("injects only config, bounds, and version when headRaw is empty", func(t *testing.T) {
+		result, err := InjectAll(htmlContent, configData, boundsData, versionData, "")
 		require.NoError(t, err)
 
-		// Check config and bounds are injected
+		// Check config, bounds, and version are injected
 		assert.Contains(t, string(result), "window.__CONFIG__")
 		assert.Contains(t, string(result), "window.__BOUNDS__")
+		assert.Contains(t, string(result), "window.__VERSION__")
 
 		// Check structure is maintained
 		assert.Contains(t, string(result), "</head>")
@@ -206,7 +230,7 @@ func TestInjectAll(t *testing.T) {
 	t.Run("returns error when no head tag", func(t *testing.T) {
 		badHTML := []byte("<html><body></body></html>")
 
-		_, err := InjectAll(badHTML, configData, boundsData, "test")
+		_, err := InjectAll(badHTML, configData, boundsData, versionData, "test")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "could not find <head> tag")
 	})
@@ -214,7 +238,7 @@ func TestInjectAll(t *testing.T) {
 	t.Run("returns error when no closing head tag", func(t *testing.T) {
 		badHTML := []byte("<html><head><body></body></html>")
 
-		_, err := InjectAll(badHTML, configData, boundsData, "test")
+		_, err := InjectAll(badHTML, configData, boundsData, versionData, "test")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "could not find </head> tag")
 	})
@@ -224,7 +248,7 @@ func TestInjectAll(t *testing.T) {
 			"test": "</script><script>alert('XSS')</script>",
 		}
 
-		result, err := InjectAll(htmlContent, configWithScript, boundsData, "")
+		result, err := InjectAll(htmlContent, configWithScript, boundsData, versionData, "")
 		require.NoError(t, err)
 
 		// Check that </script> is escaped - Go's JSON encoder uses Unicode escapes

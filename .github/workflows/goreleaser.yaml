@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       frontend_branch:
-        description: 'Frontend branch to use (e.g., frontend, main)'
+        description: 'Frontend branch to use (leave empty for latest stable release)'
         required: false
-        default: 'frontend'
+        default: ''
 
 jobs:
   goreleaser:
@@ -56,12 +56,11 @@ jobs:
 
       - name: Set frontend branch
         run: |
-          # Use workflow input if provided, otherwise default to 'frontend'
+          # Use workflow input if provided, otherwise use latest stable release
           if [ "${{ github.event.inputs.frontend_branch }}" != "" ]; then
             echo "FRONTEND_BRANCH=${{ github.event.inputs.frontend_branch }}" >> $GITHUB_ENV
-          else
-            echo "FRONTEND_BRANCH=frontend" >> $GITHUB_ENV
           fi
+          # If FRONTEND_BRANCH is empty, Makefile will use latest stable release
 
       - name: Download and setup frontend
         run: |

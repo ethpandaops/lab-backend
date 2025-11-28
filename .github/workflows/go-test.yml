@@ -19,7 +19,7 @@ jobs:
       - uses: ./.github/workflows/go-setup
 
       - name: Build (downloads frontend)
-        run: FRONTEND_BRANCH=frontend make build
+        run: make build
 
       - name: Run tests
         run: make test

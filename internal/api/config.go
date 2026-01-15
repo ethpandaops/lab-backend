@@ -36,19 +36,28 @@ type NetworkInfo struct {
 
 // Forks contains fork information for a network (API response format with snake_case).
 type Forks struct {
-	Consensus map[string]Fork `json:"consensus"` // Map of fork name to fork info
+	Consensus map[string]ConsensusFork `json:"consensus"`           // Map of fork name to fork info
+	Execution map[string]ExecutionFork `json:"execution,omitempty"` // Map of execution fork name to fork info
 }
 
-// Fork represents a single fork with epoch and minimum client versions (API response format with snake_case).
-type Fork struct {
+// ConsensusFork represents a single consensus fork with epoch and minimum client versions (API response format with snake_case).
+type ConsensusFork struct {
 	Epoch             int64             `json:"epoch"`
-	MinClientVersions map[string]string `json:"min_client_versions"` // Map of client name to version
+	Timestamp         int64             `json:"timestamp,omitempty"`
+	MinClientVersions map[string]string `json:"min_client_versions,omitempty"` // Map of client name to version
+}
+
+// ExecutionFork represents an execution layer fork with block number and timestamp.
+type ExecutionFork struct {
+	Block     int64 `json:"block"`
+	Timestamp int64 `json:"timestamp"`
 }
 
 // BlobScheduleEntry represents a single entry in the blob schedule defining
 // the maximum number of blobs per block starting at a specific epoch.
 type BlobScheduleEntry struct {
 	Epoch            int64 `json:"epoch"`
+	Timestamp        int64 `json:"timestamp,omitempty"`
 	MaxBlobsPerBlock int64 `json:"max_blobs_per_block"`
 }
 
@@ -214,16 +223,29 @@ func (h *ConfigHandler) buildFeatures(_ context.Context) []Feature {
 
 // transformForks converts cartographoor.Forks to API Forks format (for snake_case output).
 func transformForks(cartForks cartographoor.Forks) Forks {
-	consensus := make(map[string]Fork, len(cartForks.Consensus))
+	consensus := make(map[string]ConsensusFork, len(cartForks.Consensus))
 	for forkName, cartFork := range cartForks.Consensus {
-		consensus[forkName] = Fork{
+		consensus[forkName] = ConsensusFork{
 			Epoch:             cartFork.Epoch,
+			Timestamp:         cartFork.Timestamp,
 			MinClientVersions: cartFork.MinClientVersions,
+		}
+	}
+
+	var execution map[string]ExecutionFork
+	if len(cartForks.Execution) > 0 {
+		execution = make(map[string]ExecutionFork, len(cartForks.Execution))
+		for forkName, cartFork := range cartForks.Execution {
+			execution[forkName] = ExecutionFork{
+				Block:     cartFork.Block,
+				Timestamp: cartFork.Timestamp,
+			}
 		}
 	}
 
 	return Forks{
 		Consensus: consensus,
+		Execution: execution,
 	}
 }
 
@@ -237,6 +259,7 @@ func transformBlobSchedule(cartSchedule []cartographoor.BlobScheduleEntry) []Blo
 	for i, entry := range cartSchedule {
 		schedule[i] = BlobScheduleEntry{
 			Epoch:            entry.Epoch,
+			Timestamp:        entry.Timestamp,
 			MaxBlobsPerBlock: entry.MaxBlobsPerBlock,
 		}
 	}

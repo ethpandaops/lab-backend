@@ -364,6 +364,319 @@ func TestConfigHandler_buildFeatures(t *testing.T) {
 	}
 }
 
+func TestTransformForks(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    cartographoor.Forks
+		expected Forks
+	}{
+		{
+			name: "transforms consensus forks with all fields",
+			input: cartographoor.Forks{
+				Consensus: map[string]cartographoor.ConsensusFork{
+					"altair": {
+						Epoch:     74240,
+						Timestamp: 1616508000,
+						MinClientVersions: map[string]string{
+							"lighthouse": "1.5.0",
+							"prysm":      "1.4.0",
+						},
+					},
+					"bellatrix": {
+						Epoch:     144896,
+						Timestamp: 1663224179,
+					},
+				},
+			},
+			expected: Forks{
+				Consensus: map[string]ConsensusFork{
+					"altair": {
+						Epoch:     74240,
+						Timestamp: 1616508000,
+						MinClientVersions: map[string]string{
+							"lighthouse": "1.5.0",
+							"prysm":      "1.4.0",
+						},
+					},
+					"bellatrix": {
+						Epoch:     144896,
+						Timestamp: 1663224179,
+					},
+				},
+				Execution: nil,
+			},
+		},
+		{
+			name: "transforms execution forks",
+			input: cartographoor.Forks{
+				Consensus: map[string]cartographoor.ConsensusFork{
+					"phase0": {Epoch: 0},
+				},
+				Execution: map[string]cartographoor.ExecutionFork{
+					"frontier": {
+						Block:     0,
+						Timestamp: 1438269973,
+					},
+					"homestead": {
+						Block:     1150000,
+						Timestamp: 1457981393,
+					},
+					"london": {
+						Block:     12965000,
+						Timestamp: 1628166822,
+					},
+				},
+			},
+			expected: Forks{
+				Consensus: map[string]ConsensusFork{
+					"phase0": {Epoch: 0},
+				},
+				Execution: map[string]ExecutionFork{
+					"frontier": {
+						Block:     0,
+						Timestamp: 1438269973,
+					},
+					"homestead": {
+						Block:     1150000,
+						Timestamp: 1457981393,
+					},
+					"london": {
+						Block:     12965000,
+						Timestamp: 1628166822,
+					},
+				},
+			},
+		},
+		{
+			name: "empty forks",
+			input: cartographoor.Forks{
+				Consensus: map[string]cartographoor.ConsensusFork{},
+			},
+			expected: Forks{
+				Consensus: map[string]ConsensusFork{},
+				Execution: nil,
+			},
+		},
+		{
+			name: "nil execution forks stays nil",
+			input: cartographoor.Forks{
+				Consensus: map[string]cartographoor.ConsensusFork{
+					"phase0": {Epoch: 0},
+				},
+				Execution: nil,
+			},
+			expected: Forks{
+				Consensus: map[string]ConsensusFork{
+					"phase0": {Epoch: 0},
+				},
+				Execution: nil,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := transformForks(tt.input)
+
+			assert.Equal(t, len(tt.expected.Consensus), len(result.Consensus))
+
+			for name, expectedFork := range tt.expected.Consensus {
+				actualFork, exists := result.Consensus[name]
+				require.True(t, exists, "consensus fork %s should exist", name)
+				assert.Equal(t, expectedFork.Epoch, actualFork.Epoch)
+				assert.Equal(t, expectedFork.Timestamp, actualFork.Timestamp)
+				assert.Equal(t, expectedFork.MinClientVersions, actualFork.MinClientVersions)
+			}
+
+			if tt.expected.Execution == nil {
+				assert.Nil(t, result.Execution)
+			} else {
+				require.NotNil(t, result.Execution)
+				assert.Equal(t, len(tt.expected.Execution), len(result.Execution))
+
+				for name, expectedFork := range tt.expected.Execution {
+					actualFork, exists := result.Execution[name]
+					require.True(t, exists, "execution fork %s should exist", name)
+					assert.Equal(t, expectedFork.Block, actualFork.Block)
+					assert.Equal(t, expectedFork.Timestamp, actualFork.Timestamp)
+				}
+			}
+		})
+	}
+}
+
+func TestTransformBlobSchedule(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []cartographoor.BlobScheduleEntry
+		expected []BlobScheduleEntry
+	}{
+		{
+			name: "transforms blob schedule with timestamps",
+			input: []cartographoor.BlobScheduleEntry{
+				{
+					Epoch:            269568,
+					Timestamp:        1710338135,
+					MaxBlobsPerBlock: 6,
+				},
+				{
+					Epoch:            412672,
+					Timestamp:        1750000000,
+					MaxBlobsPerBlock: 15,
+				},
+			},
+			expected: []BlobScheduleEntry{
+				{
+					Epoch:            269568,
+					Timestamp:        1710338135,
+					MaxBlobsPerBlock: 6,
+				},
+				{
+					Epoch:            412672,
+					Timestamp:        1750000000,
+					MaxBlobsPerBlock: 15,
+				},
+			},
+		},
+		{
+			name: "transforms blob schedule without timestamps",
+			input: []cartographoor.BlobScheduleEntry{
+				{
+					Epoch:            269568,
+					MaxBlobsPerBlock: 6,
+				},
+			},
+			expected: []BlobScheduleEntry{
+				{
+					Epoch:            269568,
+					Timestamp:        0,
+					MaxBlobsPerBlock: 6,
+				},
+			},
+		},
+		{
+			name:     "nil input returns nil",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name:     "empty slice returns empty slice",
+			input:    []cartographoor.BlobScheduleEntry{},
+			expected: []BlobScheduleEntry{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := transformBlobSchedule(tt.input)
+
+			if tt.expected == nil {
+				assert.Nil(t, result)
+
+				return
+			}
+
+			require.NotNil(t, result)
+			assert.Equal(t, len(tt.expected), len(result))
+
+			for i, expected := range tt.expected {
+				assert.Equal(t, expected.Epoch, result[i].Epoch)
+				assert.Equal(t, expected.Timestamp, result[i].Timestamp)
+				assert.Equal(t, expected.MaxBlobsPerBlock, result[i].MaxBlobsPerBlock)
+			}
+		})
+	}
+}
+
+func TestConfigHandler_ForksAndBlobScheduleInResponse(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	cartoNetworks := map[string]*cartographoor.Network{
+		"mainnet": {
+			Name:        "mainnet",
+			DisplayName: "Ethereum Mainnet",
+			Status:      cartographoor.NetworkStatusActive,
+			ChainID:     1,
+			GenesisTime: 1606824000,
+			Forks: cartographoor.Forks{
+				Consensus: map[string]cartographoor.ConsensusFork{
+					"phase0":    {Epoch: 0, Timestamp: 1606824000},
+					"altair":    {Epoch: 74240, Timestamp: 1635753600},
+					"bellatrix": {Epoch: 144896, Timestamp: 1663224179},
+				},
+				Execution: map[string]cartographoor.ExecutionFork{
+					"frontier":  {Block: 0, Timestamp: 1438269973},
+					"homestead": {Block: 1150000, Timestamp: 1457981393},
+				},
+			},
+			BlobSchedule: []cartographoor.BlobScheduleEntry{
+				{Epoch: 269568, Timestamp: 1710338135, MaxBlobsPerBlock: 6},
+				{Epoch: 412672, Timestamp: 1750000000, MaxBlobsPerBlock: 15},
+			},
+		},
+	}
+
+	mock := cartomocks.NewMockProvider(ctrl)
+	mock.EXPECT().
+		GetActiveNetworks(gomock.Any()).
+		Return(cartoNetworks).
+		AnyTimes()
+	mock.EXPECT().
+		GetNetwork(gomock.Any(), "mainnet").
+		Return(cartoNetworks["mainnet"], true).
+		AnyTimes()
+
+	cfg := &config.Config{
+		Networks: []config.NetworkConfig{},
+		Features: []config.FeatureSettings{},
+	}
+
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+	handler := NewConfigHandler(logger, cfg, mock)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var resp ConfigResponse
+
+	err := json.NewDecoder(rec.Body).Decode(&resp)
+	require.NoError(t, err)
+
+	require.Len(t, resp.Networks, 1)
+	network := resp.Networks[0]
+
+	// Verify consensus forks
+	require.NotNil(t, network.Forks.Consensus)
+	assert.Len(t, network.Forks.Consensus, 3)
+	assert.Equal(t, int64(0), network.Forks.Consensus["phase0"].Epoch)
+	assert.Equal(t, int64(1606824000), network.Forks.Consensus["phase0"].Timestamp)
+	assert.Equal(t, int64(74240), network.Forks.Consensus["altair"].Epoch)
+	assert.Equal(t, int64(1635753600), network.Forks.Consensus["altair"].Timestamp)
+
+	// Verify execution forks
+	require.NotNil(t, network.Forks.Execution)
+	assert.Len(t, network.Forks.Execution, 2)
+	assert.Equal(t, int64(0), network.Forks.Execution["frontier"].Block)
+	assert.Equal(t, int64(1438269973), network.Forks.Execution["frontier"].Timestamp)
+	assert.Equal(t, int64(1150000), network.Forks.Execution["homestead"].Block)
+	assert.Equal(t, int64(1457981393), network.Forks.Execution["homestead"].Timestamp)
+
+	// Verify blob schedule
+	require.Len(t, network.BlobSchedule, 2)
+	assert.Equal(t, int64(269568), network.BlobSchedule[0].Epoch)
+	assert.Equal(t, int64(1710338135), network.BlobSchedule[0].Timestamp)
+	assert.Equal(t, int64(6), network.BlobSchedule[0].MaxBlobsPerBlock)
+	assert.Equal(t, int64(412672), network.BlobSchedule[1].Epoch)
+	assert.Equal(t, int64(1750000000), network.BlobSchedule[1].Timestamp)
+	assert.Equal(t, int64(15), network.BlobSchedule[1].MaxBlobsPerBlock)
+}
+
 // Helper function to create bool pointers.
 func boolPtr(b bool) *bool {
 	return &b

@@ -34,7 +34,7 @@ func TestService_FetchNetworks(t *testing.T) {
 								GenesisTime:  1606824000,
 								GenesisDelay: 0,
 							},
-							Forks:       Forks{Consensus: map[string]Fork{}},
+							Forks:       Forks{Consensus: map[string]ConsensusFork{}},
 							LastUpdated: time.Unix(1706824000, 0),
 						},
 					},

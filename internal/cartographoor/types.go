@@ -39,19 +39,28 @@ type GenesisConfig struct {
 
 // Forks contains fork information for a network.
 type Forks struct {
-	Consensus map[string]Fork `json:"consensus"` // Map of fork name to fork info
+	Consensus map[string]ConsensusFork `json:"consensus"`           // Map of fork name to fork info
+	Execution map[string]ExecutionFork `json:"execution,omitempty"` // Map of execution fork name to fork info
 }
 
-// Fork represents a single fork with epoch and minimum client versions.
-type Fork struct {
+// ConsensusFork represents a single consensus fork with epoch and minimum client versions.
+type ConsensusFork struct {
 	Epoch             int64             `json:"epoch"`
-	MinClientVersions map[string]string `json:"minClientVersions"` // Map of client name to version (camelCase to match cartographoor JSON)
+	Timestamp         int64             `json:"timestamp,omitempty"`
+	MinClientVersions map[string]string `json:"minClientVersions,omitempty"` // Map of client name to version (camelCase to match cartographoor JSON)
+}
+
+// ExecutionFork represents an execution layer fork with block number and timestamp.
+type ExecutionFork struct {
+	Block     int64 `json:"block"`
+	Timestamp int64 `json:"timestamp"`
 }
 
 // BlobScheduleEntry represents a single entry in the blob schedule defining
 // the maximum number of blobs per block starting at a specific epoch.
 type BlobScheduleEntry struct {
 	Epoch            int64 `json:"epoch"`
+	Timestamp        int64 `json:"timestamp,omitempty"`
 	MaxBlobsPerBlock int64 `json:"maxBlobsPerBlock"`
 }
 

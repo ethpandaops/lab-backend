@@ -24,6 +24,7 @@ type Config struct {
 	Bounds        BoundsConfig         `yaml:"bounds"`
 	RateLimiting  RateLimitingConfig   `yaml:"rate_limiting"`
 	Headers       HeadersConfig        `yaml:"headers"`
+	GasProfiler   GasProfilerConfig    `yaml:"gas_profiler"`
 }
 
 // ServerConfig contains HTTP server settings.
@@ -236,6 +237,11 @@ func (c *Config) Validate() error {
 		if err := c.validateRateLimiting(); err != nil {
 			return fmt.Errorf("rate_limiting: %w", err)
 		}
+	}
+
+	// Validate gas profiler config
+	if err := c.GasProfiler.Validate(); err != nil {
+		return fmt.Errorf("gas_profiler: %w", err)
 	}
 
 	return nil

@@ -64,6 +64,16 @@ func New(
 	mux.Handle("GET /api/v1/{network}/bounds", boundsHandler)
 	logger.WithField("route", "GET /api/v1/{network}/bounds").Info("Registered route")
 
+	// Gas profiler endpoints (must come before wildcard proxy)
+	if cfg.GasProfiler.Enabled {
+		gasProfilerHandler := api.NewGasProfilerHandler(&cfg.GasProfiler, logger)
+		mux.Handle("/api/v1/gas-profiler/{network}/{action}", gasProfilerHandler)
+		logger.WithFields(logrus.Fields{
+			"route":     "/api/v1/gas-profiler/{network}/{action}",
+			"endpoints": len(cfg.GasProfiler.Endpoints),
+		}).Info("Registered gas profiler routes")
+	}
+
 	// Network-based proxy for all other API routes
 	proxyHandler, err := proxy.New(logger.WithField("component", "proxy"), cfg, cartographoorProvider, wallclockSvc)
 	if err != nil {

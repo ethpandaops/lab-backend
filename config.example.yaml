@@ -85,6 +85,29 @@ rate_limiting:
       limit: 100       # 100 requests per minute per IP
       window: "1m"
 
+# Gas Profiler Simulation Service
+# Proxies requests to Erigon nodes with xatu RPC endpoints for gas repricing simulation
+gas_profiler:
+  enabled: false
+  request_timeout: 120s  # RPC requests can take a while for large blocks
+
+  # Erigon RPC endpoints per network
+  # Each network maps to Erigon node(s) running with --xatu.config flag
+  # Multiple endpoints per network are load-balanced with round-robin
+  endpoints:
+    # Example: Mainnet with multiple endpoints for load balancing
+    # - name: "mainnet-1"
+    #   network: "mainnet"
+    #   url: "http://erigon-mainnet-1:8545"
+    # - name: "mainnet-2"
+    #   network: "mainnet"
+    #   url: "http://erigon-mainnet-2:8545"
+
+    # Example: Holesky testnet (single endpoint)
+    # - name: "holesky"
+    #   network: "holesky"
+    #   url: "http://erigon-holesky:8545"
+
 # Network configuration (optional overrides and additions)
 # Cartographoor provides base networks - use this section to:
 # 1. Disable specific cartographoor networks

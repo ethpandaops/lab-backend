@@ -98,6 +98,7 @@ type jsonRPCError struct {
 type SimulateBlockRequest struct {
 	BlockNumber uint64                 `json:"blockNumber"`
 	GasSchedule map[string]interface{} `json:"gasSchedule"`
+	MaxGasLimit bool                   `json:"maxGasLimit,omitempty"`
 }
 
 // SimulateTransactionRequest is the REST request for transaction simulation.
@@ -105,6 +106,7 @@ type SimulateTransactionRequest struct {
 	TransactionHash string                 `json:"transactionHash"`
 	BlockNumber     uint64                 `json:"blockNumber,omitempty"`
 	GasSchedule     map[string]interface{} `json:"gasSchedule"`
+	MaxGasLimit     bool                   `json:"maxGasLimit,omitempty"`
 }
 
 // ServeHTTP routes requests to the appropriate handler method.
@@ -156,16 +158,20 @@ func (h *GasProfilerHandler) handleSimulateBlock(w http.ResponseWriter, r *http.
 	}
 
 	// Build JSON-RPC request
+	params := map[string]interface{}{
+		"blockNumber": req.BlockNumber,
+		"gasSchedule": req.GasSchedule,
+	}
+
+	if req.MaxGasLimit {
+		params["maxGasLimit"] = true
+	}
+
 	rpcReq := jsonRPCRequest{
 		JSONRPC: "2.0",
 		Method:  "xatu_simulateBlockGas",
-		Params: []interface{}{
-			map[string]interface{}{
-				"blockNumber": req.BlockNumber,
-				"gasSchedule": req.GasSchedule,
-			},
-		},
-		ID: 1,
+		Params:  []interface{}{params},
+		ID:      1,
 	}
 
 	h.proxyRPC(w, r, endpoint, &rpcReq)
@@ -194,6 +200,10 @@ func (h *GasProfilerHandler) handleSimulateTx(w http.ResponseWriter, r *http.Req
 
 	if req.BlockNumber != 0 {
 		params["blockNumber"] = req.BlockNumber
+	}
+
+	if req.MaxGasLimit {
+		params["maxGasLimit"] = true
 	}
 
 	rpcReq := jsonRPCRequest{

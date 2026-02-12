@@ -96,17 +96,17 @@ type jsonRPCError struct {
 
 // SimulateBlockRequest is the REST request for block simulation.
 type SimulateBlockRequest struct {
-	BlockNumber       uint64                 `json:"blockNumber"`
-	GasSchedule       map[string]interface{} `json:"gasSchedule"`
-	SimulatedGasLimit uint64                 `json:"simulatedGasLimit,omitempty"`
+	BlockNumber uint64                 `json:"blockNumber"`
+	GasSchedule map[string]interface{} `json:"gasSchedule"`
+	MaxGasLimit bool                   `json:"maxGasLimit,omitempty"`
 }
 
 // SimulateTransactionRequest is the REST request for transaction simulation.
 type SimulateTransactionRequest struct {
-	TransactionHash   string                 `json:"transactionHash"`
-	BlockNumber       uint64                 `json:"blockNumber,omitempty"`
-	GasSchedule       map[string]interface{} `json:"gasSchedule"`
-	SimulatedGasLimit uint64                 `json:"simulatedGasLimit,omitempty"`
+	TransactionHash string                 `json:"transactionHash"`
+	BlockNumber     uint64                 `json:"blockNumber,omitempty"`
+	GasSchedule     map[string]interface{} `json:"gasSchedule"`
+	MaxGasLimit     bool                   `json:"maxGasLimit,omitempty"`
 }
 
 // ServeHTTP routes requests to the appropriate handler method.
@@ -163,8 +163,8 @@ func (h *GasProfilerHandler) handleSimulateBlock(w http.ResponseWriter, r *http.
 		"gasSchedule": req.GasSchedule,
 	}
 
-	if req.SimulatedGasLimit > 0 {
-		params["simulatedGasLimit"] = req.SimulatedGasLimit
+	if req.MaxGasLimit {
+		params["maxGasLimit"] = true
 	}
 
 	rpcReq := jsonRPCRequest{
@@ -202,8 +202,8 @@ func (h *GasProfilerHandler) handleSimulateTx(w http.ResponseWriter, r *http.Req
 		params["blockNumber"] = req.BlockNumber
 	}
 
-	if req.SimulatedGasLimit > 0 {
-		params["simulatedGasLimit"] = req.SimulatedGasLimit
+	if req.MaxGasLimit {
+		params["maxGasLimit"] = true
 	}
 
 	rpcReq := jsonRPCRequest{

@@ -29,6 +29,7 @@ type Server struct {
 	proxy                 *proxy.Proxy
 	frontend              *frontend.Frontend
 	rateLimiter           ratelimit.Service
+	gasProfilerHandler    *api.GasProfilerHandler
 	logger                logrus.FieldLogger
 	cartographoorProvider cartographoor.Provider
 	boundsProvider        bounds.Provider
@@ -65,8 +66,10 @@ func New(
 	logger.WithField("route", "GET /api/v1/{network}/bounds").Info("Registered route")
 
 	// Gas profiler endpoints (must come before wildcard proxy)
+	var gasProfilerHandler *api.GasProfilerHandler
+
 	if cfg.GasProfiler.Enabled {
-		gasProfilerHandler := api.NewGasProfilerHandler(&cfg.GasProfiler, logger)
+		gasProfilerHandler = api.NewGasProfilerHandler(&cfg.GasProfiler, logger)
 		mux.Handle("/api/v1/gas-profiler/{network}/{action}", gasProfilerHandler)
 		logger.WithFields(logrus.Fields{
 			"route":     "/api/v1/gas-profiler/{network}/{action}",
@@ -142,6 +145,7 @@ func New(
 		proxy:                 proxyHandler,
 		frontend:              frontendHandler,
 		rateLimiter:           rateLimiter,
+		gasProfilerHandler:    gasProfilerHandler,
 		logger:                logger,
 		cartographoorProvider: cartographoorProvider,
 		boundsProvider:        boundsProvider,
@@ -163,6 +167,11 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to start frontend: %w", err)
 	}
 
+	// Start gas profiler health poller if enabled
+	if s.gasProfilerHandler != nil {
+		s.gasProfilerHandler.Start()
+	}
+
 	s.logger.WithField("addr", s.httpServer.Addr).Info("Starting HTTP server")
 
 	return s.httpServer.ListenAndServe()
@@ -171,6 +180,11 @@ func (s *Server) Start() error {
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Info("Shutting down HTTP server")
+
+	// Stop gas profiler health poller
+	if s.gasProfilerHandler != nil {
+		s.gasProfilerHandler.Stop()
+	}
 
 	// Shutdown frontend cache refresh loop
 	if s.frontend != nil {

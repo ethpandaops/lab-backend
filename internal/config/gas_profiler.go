@@ -12,6 +12,7 @@ type GasProfilerConfig struct {
 	Enabled        bool                  `yaml:"enabled"`
 	Endpoints      []GasProfilerEndpoint `yaml:"endpoints"`       // List of Erigon RPC endpoints
 	RequestTimeout time.Duration         `yaml:"request_timeout"` // HTTP request timeout for RPC calls
+	HealthInterval time.Duration         `yaml:"health_interval"` // Interval between endpoint health checks (default 30s)
 }
 
 // GasProfilerEndpoint defines a single Erigon RPC endpoint.
@@ -38,6 +39,15 @@ func (c *GasProfilerConfig) Validate() error {
 
 	if c.RequestTimeout < 5*time.Second {
 		return fmt.Errorf("request_timeout must be at least 5 seconds, got %v", c.RequestTimeout)
+	}
+
+	// Set default health interval
+	if c.HealthInterval == 0 {
+		c.HealthInterval = 30 * time.Second
+	}
+
+	if c.HealthInterval < 10*time.Second {
+		return fmt.Errorf("health_interval must be at least 10 seconds, got %v", c.HealthInterval)
 	}
 
 	// Validate each endpoint and check for duplicate names

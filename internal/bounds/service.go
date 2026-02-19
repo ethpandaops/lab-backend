@@ -257,7 +257,7 @@ func (s *Service) fetchBoundsFromURL(
 			return nil, fmt.Errorf("create request: %w", err)
 		}
 
-		resp, err := s.httpClient.Do(req)
+		resp, err := s.httpClient.Do(req) //nolint:gosec // URL is constructed from trusted config values.
 		if err != nil {
 			return nil, fmt.Errorf("fetch data: %w", err)
 		}

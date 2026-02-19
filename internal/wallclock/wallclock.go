@@ -97,7 +97,6 @@ func (s *Service) AddNetwork(config NetworkConfig) error {
 	}
 
 	// Create the wallclock
-	//nolint:gosec // Safe conversion for slot duration
 	slotDuration := time.Second * time.Duration(secondsPerSlot)
 	network.wallclock = ethwallclock.NewEthereumBeaconChain(
 		config.GenesisTime,

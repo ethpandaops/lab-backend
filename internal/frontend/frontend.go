@@ -179,7 +179,7 @@ func (f *Frontend) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 
-	if _, err := w.Write(html); err != nil {
+	if _, err := w.Write(html); err != nil { //nolint:gosec // HTML from embedded static files.
 		f.logger.WithError(err).Error("Failed to write index.html response")
 	}
 }

@@ -175,7 +175,7 @@ func (h *GasProfilerHandler) isEndpointSynced(ep config.GasProfilerEndpoint) boo
 
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := h.client.Do(httpReq)
+	resp, err := h.client.Do(httpReq) //nolint:gosec // URL from trusted config.
 	if err != nil {
 		log.WithError(err).Warn("Health check: HTTP request failed")
 
@@ -484,7 +484,7 @@ func (h *GasProfilerHandler) proxyRPC(w http.ResponseWriter, r *http.Request, en
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	// Send request
-	resp, err := h.client.Do(httpReq)
+	resp, err := h.client.Do(httpReq) //nolint:gosec // URL from trusted config.
 	if err != nil {
 		h.logger.WithError(err).WithField("endpoint", endpoint.Name).Error("Failed to send RPC request")
 		h.errorResponse(w, http.StatusBadGateway, "upstream error")

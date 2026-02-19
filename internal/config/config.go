@@ -40,7 +40,7 @@ type ServerConfig struct {
 // RedisConfig holds Redis client configuration.
 type RedisConfig struct {
 	Address      string        `yaml:"address"`
-	Password     string        `yaml:"password"`
+	Password     string        `yaml:"password"` //nolint:gosec // Config field, not a hardcoded secret.
 	DB           int           `yaml:"db"`
 	DialTimeout  time.Duration `yaml:"dial_timeout"`
 	ReadTimeout  time.Duration `yaml:"read_timeout"`
@@ -130,7 +130,7 @@ func (c *BoundsConfig) HTTPClient() *http.Client {
 // Load loads configuration from a YAML file.
 func Load(path string) (*Config, error) {
 	// Read file
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // Path from trusted CLI arg.
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}

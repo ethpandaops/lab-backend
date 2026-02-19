@@ -27,6 +27,11 @@ type Proxy struct {
 	provider     cartographoor.Provider
 	wallclockSvc *wallclock.Service
 
+	// Local override proxies for hybrid mode (per-table routing)
+	localProxies   map[string]*httputil.ReverseProxy // network → local proxy
+	localProxyURLs map[string]string                 // network → local URL
+	localTables    map[string]map[string]bool        // network → set of table names
+
 	// Periodic sync lifecycle
 	syncTicker *time.Ticker
 	stopChan   chan struct{}
@@ -41,13 +46,16 @@ func New(
 	wallclockSvc *wallclock.Service,
 ) (*Proxy, error) {
 	p := &Proxy{
-		config:       cfg,
-		proxies:      make(map[string]*httputil.ReverseProxy),
-		proxyURLs:    make(map[string]string),
-		logger:       logger.WithField("component", "proxy"),
-		provider:     provider,
-		wallclockSvc: wallclockSvc,
-		stopChan:     make(chan struct{}),
+		config:         cfg,
+		proxies:        make(map[string]*httputil.ReverseProxy),
+		proxyURLs:      make(map[string]string),
+		localProxies:   make(map[string]*httputil.ReverseProxy),
+		localProxyURLs: make(map[string]string),
+		localTables:    make(map[string]map[string]bool),
+		logger:         logger.WithField("component", "proxy"),
+		provider:       provider,
+		wallclockSvc:   wallclockSvc,
+		stopChan:       make(chan struct{}),
 	}
 
 	// Initial sync: build merged network list and create proxies
@@ -68,7 +76,7 @@ func New(
 // ServeHTTP implements http.Handler interface.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Extract network from path
-	network, _, err := ExtractNetwork(r.URL.Path)
+	network, remainingPath, err := ExtractNetwork(r.URL.Path)
 	if err != nil {
 		p.logger.WithFields(logrus.Fields{
 			"path":  r.URL.Path,
@@ -82,6 +90,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	p.mu.RLock()
 	proxy, exists := p.proxies[network]
+	localProxy := p.localProxies[network]
+	localTableSet := p.localTables[network]
 	p.mu.RUnlock()
 
 	if !exists {
@@ -103,15 +113,30 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log proxy request
-	p.logger.WithFields(logrus.Fields{
-		"method":  r.Method,
-		"network": network,
-		"path":    r.URL.Path,
-	}).Debug("Proxying request")
+	// Check if this request should be routed to local proxy (hybrid mode)
+	tableName := ExtractTableName(remainingPath)
+	selectedProxy := proxy
 
-	// Forward request to backend
-	proxy.ServeHTTP(w, r)
+	if localProxy != nil && localTableSet[tableName] {
+		selectedProxy = localProxy
+
+		p.logger.WithFields(logrus.Fields{
+			"method":  r.Method,
+			"network": network,
+			"table":   tableName,
+			"path":    r.URL.Path,
+		}).Debug("Routing to local proxy (hybrid override)")
+	} else {
+		p.logger.WithFields(logrus.Fields{
+			"method":  r.Method,
+			"network": network,
+			"path":    r.URL.Path,
+		}).Debug("Proxying request")
+	}
+
+	// Forward request to selected backend
+	// Proxy targets are pre-configured from admin config, not user input.
+	selectedProxy.ServeHTTP(w, r) //nolint:gosec // G704: proxy targets are from trusted config
 }
 
 // createReverseProxy creates and configures a ReverseProxy for a target URL.
@@ -333,6 +358,13 @@ func (p *Proxy) AddNetwork(network config.NetworkConfig) error {
 	p.proxies[network.Name] = proxy
 	p.proxyURLs[network.Name] = network.TargetURL
 
+	// Set up local override proxy for hybrid mode
+	if network.LocalOverrides != nil {
+		if err := p.setupLocalProxy(network); err != nil {
+			return fmt.Errorf("failed to create local proxy for %s: %w", network.Name, err)
+		}
+	}
+
 	p.logger.WithFields(logrus.Fields{
 		"network":    network.Name,
 		"target_url": network.TargetURL,
@@ -349,6 +381,9 @@ func (p *Proxy) RemoveNetwork(networkName string) {
 
 	delete(p.proxies, networkName)
 	delete(p.proxyURLs, networkName)
+	delete(p.localProxies, networkName)
+	delete(p.localProxyURLs, networkName)
+	delete(p.localTables, networkName)
 
 	p.logger.WithField("network", networkName).Info("Network proxy removed")
 }
@@ -359,10 +394,19 @@ func (p *Proxy) RemoveNetwork(networkName string) {
 func (p *Proxy) UpdateNetwork(network config.NetworkConfig) error {
 	p.mu.RLock()
 	currentURL, exists := p.proxyURLs[network.Name]
+	currentLocalURL := p.localProxyURLs[network.Name]
 	p.mu.RUnlock()
 
-	// Only update if URL changed
-	if exists && currentURL == network.TargetURL {
+	// Determine if local override URL changed
+	newLocalURL := ""
+	if network.LocalOverrides != nil {
+		newLocalURL = network.LocalOverrides.TargetURL
+	}
+
+	mainChanged := !exists || currentURL != network.TargetURL
+	localChanged := currentLocalURL != newLocalURL
+
+	if !mainChanged && !localChanged {
 		p.logger.WithFields(logrus.Fields{
 			"network":    network.Name,
 			"target_url": network.TargetURL,
@@ -374,19 +418,67 @@ func (p *Proxy) UpdateNetwork(network config.NetworkConfig) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Create new reverse proxy
-	proxy, err := p.createReverseProxy(network.TargetURL, network.Name)
-	if err != nil {
-		return fmt.Errorf("failed to update proxy for %s: %w", network.Name, err)
+	if mainChanged {
+		proxy, err := p.createReverseProxy(network.TargetURL, network.Name)
+		if err != nil {
+			return fmt.Errorf("failed to update proxy for %s: %w", network.Name, err)
+		}
+
+		p.proxies[network.Name] = proxy
+		p.proxyURLs[network.Name] = network.TargetURL
 	}
 
-	p.proxies[network.Name] = proxy
-	p.proxyURLs[network.Name] = network.TargetURL
+	// Update local proxy state
+	if localChanged {
+		// Clean up old local proxy state
+		delete(p.localProxies, network.Name)
+		delete(p.localProxyURLs, network.Name)
+		delete(p.localTables, network.Name)
+
+		if network.LocalOverrides != nil {
+			if err := p.setupLocalProxy(network); err != nil {
+				return fmt.Errorf(
+					"failed to update local proxy for %s: %w",
+					network.Name, err,
+				)
+			}
+		}
+	}
 
 	p.logger.WithFields(logrus.Fields{
 		"network":    network.Name,
 		"target_url": network.TargetURL,
 	}).Info("Network proxy updated")
+
+	return nil
+}
+
+// setupLocalProxy creates and stores a local reverse proxy for hybrid mode.
+// Must be called with p.mu held.
+func (p *Proxy) setupLocalProxy(network config.NetworkConfig) error {
+	localProxy, err := p.createReverseProxy(
+		network.LocalOverrides.TargetURL,
+		network.Name+"-local",
+	)
+	if err != nil {
+		return fmt.Errorf("create local reverse proxy: %w", err)
+	}
+
+	p.localProxies[network.Name] = localProxy
+	p.localProxyURLs[network.Name] = network.LocalOverrides.TargetURL
+
+	tableSet := make(map[string]bool, len(network.LocalOverrides.Tables))
+	for _, table := range network.LocalOverrides.Tables {
+		tableSet[table] = true
+	}
+
+	p.localTables[network.Name] = tableSet
+
+	p.logger.WithFields(logrus.Fields{
+		"network":      network.Name,
+		"local_target": network.LocalOverrides.TargetURL,
+		"local_tables": network.LocalOverrides.Tables,
+	}).Info("Local override proxy configured for hybrid mode")
 
 	return nil
 }

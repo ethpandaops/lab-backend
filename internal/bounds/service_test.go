@@ -297,6 +297,126 @@ func TestService_fetchBoundsForNetwork(t *testing.T) {
 	}
 }
 
+func TestService_fetchBoundsForNetwork_HybridMode(t *testing.T) {
+	// External server returns bounds for fct_block and fct_attestation
+	externalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := AdminCBTIncrementalResponse{
+			AdminCBTIncremental: []IncrementalTableRecord{
+				{Table: "fct_block", Position: 100, Interval: 10},
+				{Table: "fct_attestation", Position: 200, Interval: 20},
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp) //nolint:errcheck //test
+	}))
+	defer externalServer.Close()
+
+	// Local server returns bounds for fct_block only (different values)
+	localServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := AdminCBTIncrementalResponse{
+			AdminCBTIncremental: []IncrementalTableRecord{
+				{Table: "fct_block", Position: 50, Interval: 5},
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp) //nolint:errcheck //test
+	}))
+	defer localServer.Close()
+
+	cfg := &config.Config{
+		Bounds: config.BoundsConfig{
+			RequestTimeout: 10 * time.Second,
+		},
+	}
+
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	svc := &Service{
+		config:     cfg,
+		logger:     logger,
+		httpClient: cfg.Bounds.HTTPClient(),
+	}
+
+	ctx := context.Background()
+
+	network := config.NetworkConfig{
+		Name:      "mainnet",
+		TargetURL: externalServer.URL,
+		LocalOverrides: &config.LocalOverridesConfig{
+			TargetURL: localServer.URL,
+			Tables:    []string{"fct_block"},
+		},
+	}
+
+	result, err := svc.fetchBoundsForNetwork(ctx, network)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// fct_block should come from local (overridden table)
+	assert.Equal(t, int64(50), result.Tables["fct_block"].Min)
+	assert.Equal(t, int64(55), result.Tables["fct_block"].Max)
+
+	// fct_attestation should come from external
+	assert.Equal(t, int64(200), result.Tables["fct_attestation"].Min)
+	assert.Equal(t, int64(220), result.Tables["fct_attestation"].Max)
+}
+
+func TestService_fetchBoundsForNetwork_HybridLocalFailsGracefully(t *testing.T) {
+	// External server works fine
+	externalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := AdminCBTIncrementalResponse{
+			AdminCBTIncremental: []IncrementalTableRecord{
+				{Table: "fct_block", Position: 100, Interval: 10},
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp) //nolint:errcheck //test
+	}))
+	defer externalServer.Close()
+
+	// Local server is down
+	localServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer localServer.Close()
+
+	cfg := &config.Config{
+		Bounds: config.BoundsConfig{
+			RequestTimeout: 10 * time.Second,
+		},
+	}
+
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	svc := &Service{
+		config:     cfg,
+		logger:     logger,
+		httpClient: cfg.Bounds.HTTPClient(),
+	}
+
+	ctx := context.Background()
+
+	network := config.NetworkConfig{
+		Name:      "mainnet",
+		TargetURL: externalServer.URL,
+		LocalOverrides: &config.LocalOverridesConfig{
+			TargetURL: localServer.URL,
+			Tables:    []string{"fct_block"},
+		},
+	}
+
+	// Should succeed with cached external bounds when local fails
+	result, err := svc.fetchBoundsForNetwork(ctx, network)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, int64(100), result.Tables["fct_block"].Min)
+}
+
 func TestService_FetchBounds(t *testing.T) {
 	tests := []struct {
 		name              string

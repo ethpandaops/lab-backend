@@ -414,6 +414,57 @@ func TestNetworkConfig_Validate(t *testing.T) {
 			},
 			expectError: false,
 		},
+		{
+			name: "valid local overrides",
+			config: NetworkConfig{
+				Name:      "mainnet",
+				TargetURL: "https://example.com",
+				LocalOverrides: &LocalOverridesConfig{
+					TargetURL: "http://localhost:8091/api/v1",
+					Tables:    []string{"fct_block", "fct_block_head"},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "local overrides with empty target URL returns error",
+			config: NetworkConfig{
+				Name:      "mainnet",
+				TargetURL: "https://example.com",
+				LocalOverrides: &LocalOverridesConfig{
+					TargetURL: "",
+					Tables:    []string{"fct_block"},
+				},
+			},
+			expectError: true,
+			errorMsg:    "local_overrides.target_url cannot be empty",
+		},
+		{
+			name: "local overrides with empty tables returns error",
+			config: NetworkConfig{
+				Name:      "mainnet",
+				TargetURL: "https://example.com",
+				LocalOverrides: &LocalOverridesConfig{
+					TargetURL: "http://localhost:8091/api/v1",
+					Tables:    []string{},
+				},
+			},
+			expectError: true,
+			errorMsg:    "local_overrides.tables cannot be empty",
+		},
+		{
+			name: "local overrides with invalid URL scheme returns error",
+			config: NetworkConfig{
+				Name:      "mainnet",
+				TargetURL: "https://example.com",
+				LocalOverrides: &LocalOverridesConfig{
+					TargetURL: "ftp://localhost:8091",
+					Tables:    []string{"fct_block"},
+				},
+			},
+			expectError: true,
+			errorMsg:    "local_overrides.target_url must use http or https",
+		},
 	}
 
 	for _, tt := range tests {

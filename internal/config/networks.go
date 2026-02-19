@@ -10,17 +10,26 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// LocalOverridesConfig defines per-table routing overrides for hybrid mode.
+// When set, requests for the specified tables are routed to the local target
+// while all other tables use the default (external) TargetURL.
+type LocalOverridesConfig struct {
+	TargetURL string   `yaml:"target_url"` // Local cbt-api URL
+	Tables    []string `yaml:"tables"`     // Tables to route locally
+}
+
 // NetworkConfig defines a single network's configuration.
 // When used in config.yaml, all fields except Name are optional.
 // Cartographoor values are used as defaults, config.yaml provides overrides.
 type NetworkConfig struct {
-	Name         string `yaml:"name"`                    // Required: "mainnet", "sepolia", etc.
-	Enabled      *bool  `yaml:"enabled,omitempty"`       // Optional: Whether this network is active
-	TargetURL    string `yaml:"target_url,omitempty"`    // Optional: Backend CBT API URL
-	DisplayName  string `yaml:"display_name,omitempty"`  // Optional: Human-readable name
-	ChainID      *int64 `yaml:"chain_id,omitempty"`      // Optional: Numeric chain ID
-	GenesisTime  *int64 `yaml:"genesis_time,omitempty"`  // Optional: Unix timestamp
-	GenesisDelay *int64 `yaml:"genesis_delay,omitempty"` // Optional: Genesis delay in seconds
+	Name           string                `yaml:"name"`                      // Required: "mainnet", "sepolia", etc.
+	Enabled        *bool                 `yaml:"enabled,omitempty"`         // Optional: Whether this network is active
+	TargetURL      string                `yaml:"target_url,omitempty"`      // Optional: Backend CBT API URL
+	DisplayName    string                `yaml:"display_name,omitempty"`    // Optional: Human-readable name
+	ChainID        *int64                `yaml:"chain_id,omitempty"`        // Optional: Numeric chain ID
+	GenesisTime    *int64                `yaml:"genesis_time,omitempty"`    // Optional: Unix timestamp
+	GenesisDelay   *int64                `yaml:"genesis_delay,omitempty"`   // Optional: Genesis delay in seconds
+	LocalOverrides *LocalOverridesConfig `yaml:"local_overrides,omitempty"` // Optional: Hybrid-mode per-table routing
 }
 
 // FeatureSettings defines settings for a single feature.
@@ -55,6 +64,49 @@ func (n *NetworkConfig) Validate() error {
 
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return fmt.Errorf("network %s: target_url must use http or https scheme", n.Name)
+	}
+
+	// Validate local_overrides if set
+	if err := n.validateLocalOverrides(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateLocalOverrides validates the LocalOverrides config if present.
+func (n *NetworkConfig) validateLocalOverrides() error {
+	if n.LocalOverrides == nil {
+		return nil
+	}
+
+	if n.LocalOverrides.TargetURL == "" {
+		return fmt.Errorf(
+			"network %s: local_overrides.target_url cannot be empty",
+			n.Name,
+		)
+	}
+
+	parsedURL, err := url.Parse(n.LocalOverrides.TargetURL)
+	if err != nil {
+		return fmt.Errorf(
+			"network %s: invalid local_overrides.target_url: %w",
+			n.Name, err,
+		)
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf(
+			"network %s: local_overrides.target_url must use http or https scheme",
+			n.Name,
+		)
+	}
+
+	if len(n.LocalOverrides.Tables) == 0 {
+		return fmt.Errorf(
+			"network %s: local_overrides.tables cannot be empty",
+			n.Name,
+		)
 	}
 
 	return nil
@@ -140,6 +192,10 @@ func BuildMergedNetworkList(
 
 			if configNet.GenesisDelay != nil {
 				existing.GenesisDelay = configNet.GenesisDelay
+			}
+
+			if configNet.LocalOverrides != nil {
+				existing.LocalOverrides = configNet.LocalOverrides
 			}
 
 			networks[configNet.Name] = existing

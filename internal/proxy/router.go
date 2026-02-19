@@ -50,6 +50,21 @@ func RewritePath(path string) (string, error) {
 	return "/api/v1" + remainingPath, nil
 }
 
+// ExtractTableName returns the first path segment from a remaining path.
+// "/fct_block" → "fct_block", "/fct_block/123" → "fct_block", "/" → "".
+func ExtractTableName(remainingPath string) string {
+	trimmed := strings.TrimPrefix(remainingPath, "/")
+	if trimmed == "" {
+		return ""
+	}
+
+	if idx := strings.Index(trimmed, "/"); idx != -1 {
+		return trimmed[:idx]
+	}
+
+	return trimmed
+}
+
 // ValidatePath checks if path matches expected format.
 func ValidatePath(path string) bool {
 	// Check if path starts with /api/v1/

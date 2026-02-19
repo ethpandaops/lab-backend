@@ -46,7 +46,7 @@ func (s *Service) FetchNetworks(
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.httpClient.Do(req) //nolint:gosec // URL from trusted config.
 	if err != nil {
 		return nil, fmt.Errorf("fetch data: %w", err)
 	}

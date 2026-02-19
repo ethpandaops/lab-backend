@@ -144,6 +144,8 @@ func (s *Service) FetchBounds(
 }
 
 // fetchBoundsForNetwork fetches bounds for a single network with pagination support.
+// In hybrid mode (LocalOverrides set), it fetches from both external and local
+// sources, then merges: local bounds for overridden tables, external for everything else.
 func (s *Service) fetchBoundsForNetwork(
 	ctx context.Context,
 	network config.NetworkConfig,
@@ -152,7 +154,87 @@ func (s *Service) fetchBoundsForNetwork(
 		return nil, fmt.Errorf("network %s has no target_url configured", network.Name)
 	}
 
-	// Accumulate all records across pages
+	// If no local overrides, fetch from primary source only.
+	if network.LocalOverrides == nil {
+		return s.fetchBoundsFromURL(ctx, network.TargetURL, network.Name)
+	}
+
+	// Hybrid mode: fetch both external and local, merge results.
+	externalBounds, externalErr := s.fetchBoundsFromURL(
+		ctx, network.TargetURL, network.Name,
+	)
+	if externalErr != nil {
+		s.logger.WithFields(logrus.Fields{
+			"network": network.Name,
+			"error":   externalErr,
+		}).Warn("External bounds fetch failed")
+	}
+
+	localBounds, localErr := s.fetchBoundsFromURL(
+		ctx, network.LocalOverrides.TargetURL, network.Name,
+	)
+	if localErr != nil {
+		s.logger.WithFields(logrus.Fields{
+			"network":   network.Name,
+			"local_url": network.LocalOverrides.TargetURL,
+			"error":     localErr,
+		}).Warn("Local bounds fetch failed")
+	}
+
+	// Handle failures gracefully.
+	if externalErr != nil && localErr != nil {
+		return nil, fmt.Errorf(
+			"both fetches failed: external: %w, local: %v",
+			externalErr, localErr,
+		)
+	}
+
+	if externalErr != nil {
+		return localBounds, nil //nolint:nilerr // Graceful degradation: use local when external fails.
+	}
+
+	if localErr != nil {
+		return externalBounds, nil //nolint:nilerr // Graceful degradation: use external when local fails.
+	}
+
+	// Both succeeded — merge: local bounds for overridden tables, external for rest.
+	localTableSet := make(map[string]bool, len(network.LocalOverrides.Tables))
+	for _, table := range network.LocalOverrides.Tables {
+		localTableSet[table] = true
+	}
+
+	merged := &BoundsData{
+		Tables:      make(map[string]TableBounds, len(externalBounds.Tables)),
+		LastUpdated: time.Now(),
+	}
+
+	for table, bounds := range externalBounds.Tables {
+		merged.Tables[table] = bounds
+	}
+
+	for table, bounds := range localBounds.Tables {
+		if localTableSet[table] {
+			merged.Tables[table] = bounds
+		}
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"network":      network.Name,
+		"external":     len(externalBounds.Tables),
+		"local":        len(localBounds.Tables),
+		"merged":       len(merged.Tables),
+		"local_tables": network.LocalOverrides.Tables,
+	}).Debug("Merged external and local bounds for hybrid mode")
+
+	return merged, nil
+}
+
+// fetchBoundsFromURL fetches bounds from a single cbt-api URL with pagination.
+func (s *Service) fetchBoundsFromURL(
+	ctx context.Context,
+	targetURL string,
+	networkName string,
+) (*BoundsData, error) {
 	var (
 		allRecords    = make([]IncrementalTableRecord, 0)
 		nextPageToken = ""
@@ -160,23 +242,22 @@ func (s *Service) fetchBoundsForNetwork(
 	)
 
 	for {
-		// Construct URL with database filter, page size, and optional page token
-		url := fmt.Sprintf(
-			"%s/admin_cbt_incremental?database_eq=%s&page_size=500",
-			network.TargetURL,
-			network.Name,
+		reqURL := fmt.Sprintf(
+			"%s/admin_cbt_incremental?database_eq=%s&page_size=10000",
+			targetURL,
+			networkName,
 		)
 
 		if nextPageToken != "" {
-			url = fmt.Sprintf("%s&page_token=%s", url, nextPageToken)
+			reqURL = fmt.Sprintf("%s&page_token=%s", reqURL, nextPageToken)
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 		if err != nil {
 			return nil, fmt.Errorf("create request: %w", err)
 		}
 
-		resp, err := s.httpClient.Do(req)
+		resp, err := s.httpClient.Do(req) //nolint:gosec // URL is constructed from trusted config values.
 		if err != nil {
 			return nil, fmt.Errorf("fetch data: %w", err)
 		}
@@ -200,11 +281,9 @@ func (s *Service) fetchBoundsForNetwork(
 			return nil, fmt.Errorf("parse JSON: %w", err)
 		}
 
-		// Accumulate records from this page
 		allRecords = append(allRecords, apiResp.AdminCBTIncremental...)
 		pageCount++
 
-		// Check if there are more pages
 		if apiResp.NextPageToken == "" {
 			break
 		}
@@ -212,22 +291,21 @@ func (s *Service) fetchBoundsForNetwork(
 		nextPageToken = apiResp.NextPageToken
 
 		s.logger.WithFields(logrus.Fields{
-			"network": network.Name,
+			"network": networkName,
+			"url":     targetURL,
 			"page":    pageCount,
 			"records": len(apiResp.AdminCBTIncremental),
 		}).Debug("Fetched page of admin_cbt_incremental data")
 	}
 
 	s.logger.WithFields(logrus.Fields{
-		"network":       network.Name,
+		"network":       networkName,
+		"url":           targetURL,
 		"total_pages":   pageCount,
 		"total_records": len(allRecords),
-	}).Debug("Completed fetching all bounds for network")
+	}).Debug("Completed fetching bounds from URL")
 
-	// Calculate bounds from all accumulated records
-	bounds := s.calculateBounds(allRecords)
-
-	return bounds, nil
+	return s.calculateBounds(allRecords), nil
 }
 
 // calculateBounds computes per-table min/max from incremental table records.

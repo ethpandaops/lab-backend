@@ -168,6 +168,52 @@ func TestRewritePath(t *testing.T) {
 	}
 }
 
+func TestExtractTableName(t *testing.T) {
+	tests := []struct {
+		name          string
+		remainingPath string
+		expected      string
+	}{
+		{
+			name:          "simple table name",
+			remainingPath: "/fct_block",
+			expected:      "fct_block",
+		},
+		{
+			name:          "table name with sub-path",
+			remainingPath: "/fct_block/123",
+			expected:      "fct_block",
+		},
+		{
+			name:          "table name with multiple sub-paths",
+			remainingPath: "/fct_block/summary/details",
+			expected:      "fct_block",
+		},
+		{
+			name:          "root path returns empty",
+			remainingPath: "/",
+			expected:      "",
+		},
+		{
+			name:          "empty path returns empty",
+			remainingPath: "",
+			expected:      "",
+		},
+		{
+			name:          "bounds endpoint",
+			remainingPath: "/bounds",
+			expected:      "bounds",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ExtractTableName(tt.remainingPath)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestValidatePath(t *testing.T) {
 	tests := []struct {
 		name     string

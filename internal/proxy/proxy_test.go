@@ -60,10 +60,13 @@ func TestProxy_AddNetwork(t *testing.T) {
 			cfg := &config.Config{}
 
 			p := &Proxy{
-				config:    cfg,
-				proxies:   make(map[string]*httputil.ReverseProxy),
-				proxyURLs: make(map[string]string),
-				logger:    logger,
+				config:         cfg,
+				proxies:        make(map[string]*httputil.ReverseProxy),
+				proxyURLs:      make(map[string]string),
+				localProxies:   make(map[string]*httputil.ReverseProxy),
+				localProxyURLs: make(map[string]string),
+				localTables:    make(map[string]map[string]bool),
+				logger:         logger,
 			}
 
 			err := p.AddNetwork(tt.network)
@@ -90,10 +93,13 @@ func TestProxy_RemoveNetwork(t *testing.T) {
 	cfg := &config.Config{}
 
 	p := &Proxy{
-		config:    cfg,
-		proxies:   make(map[string]*httputil.ReverseProxy),
-		proxyURLs: make(map[string]string),
-		logger:    logger,
+		config:         cfg,
+		proxies:        make(map[string]*httputil.ReverseProxy),
+		proxyURLs:      make(map[string]string),
+		localProxies:   make(map[string]*httputil.ReverseProxy),
+		localProxyURLs: make(map[string]string),
+		localTables:    make(map[string]map[string]bool),
+		logger:         logger,
 	}
 
 	// Add a network first
@@ -153,10 +159,13 @@ func TestProxy_UpdateNetwork(t *testing.T) {
 			cfg := &config.Config{}
 
 			p := &Proxy{
-				config:    cfg,
-				proxies:   make(map[string]*httputil.ReverseProxy),
-				proxyURLs: make(map[string]string),
-				logger:    logger,
+				config:         cfg,
+				proxies:        make(map[string]*httputil.ReverseProxy),
+				proxyURLs:      make(map[string]string),
+				localProxies:   make(map[string]*httputil.ReverseProxy),
+				localProxyURLs: make(map[string]string),
+				localTables:    make(map[string]map[string]bool),
+				logger:         logger,
 			}
 
 			// Add initial network
@@ -244,10 +253,13 @@ func TestProxy_ServeHTTP(t *testing.T) {
 			}
 
 			p := &Proxy{
-				config:    cfg,
-				proxies:   make(map[string]*httputil.ReverseProxy),
-				proxyURLs: make(map[string]string),
-				logger:    logger,
+				config:         cfg,
+				proxies:        make(map[string]*httputil.ReverseProxy),
+				proxyURLs:      make(map[string]string),
+				localProxies:   make(map[string]*httputil.ReverseProxy),
+				localProxyURLs: make(map[string]string),
+				localTables:    make(map[string]map[string]bool),
+				logger:         logger,
 			}
 
 			// Add network if it should exist
@@ -347,11 +359,14 @@ func TestProxy_SyncNetworks(t *testing.T) {
 			cfg := &config.Config{}
 
 			p := &Proxy{
-				config:    cfg,
-				proxies:   make(map[string]*httputil.ReverseProxy),
-				proxyURLs: make(map[string]string),
-				logger:    logger,
-				provider:  mockProvider,
+				config:         cfg,
+				proxies:        make(map[string]*httputil.ReverseProxy),
+				proxyURLs:      make(map[string]string),
+				localProxies:   make(map[string]*httputil.ReverseProxy),
+				localProxyURLs: make(map[string]string),
+				localTables:    make(map[string]map[string]bool),
+				logger:         logger,
+				provider:       mockProvider,
 			}
 
 			// Add initial networks
@@ -389,10 +404,13 @@ func TestProxy_NetworkCount(t *testing.T) {
 	cfg := &config.Config{}
 
 	p := &Proxy{
-		config:    cfg,
-		proxies:   make(map[string]*httputil.ReverseProxy),
-		proxyURLs: make(map[string]string),
-		logger:    logger,
+		config:         cfg,
+		proxies:        make(map[string]*httputil.ReverseProxy),
+		proxyURLs:      make(map[string]string),
+		localProxies:   make(map[string]*httputil.ReverseProxy),
+		localProxyURLs: make(map[string]string),
+		localTables:    make(map[string]map[string]bool),
+		logger:         logger,
 	}
 
 	// Initially empty
@@ -415,6 +433,158 @@ func TestProxy_NetworkCount(t *testing.T) {
 	assert.Equal(t, 2, p.NetworkCount())
 }
 
+func TestProxy_AddNetwork_WithLocalOverrides(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	cfg := &config.Config{}
+
+	p := &Proxy{
+		config:         cfg,
+		proxies:        make(map[string]*httputil.ReverseProxy),
+		proxyURLs:      make(map[string]string),
+		localProxies:   make(map[string]*httputil.ReverseProxy),
+		localProxyURLs: make(map[string]string),
+		localTables:    make(map[string]map[string]bool),
+		logger:         logger,
+	}
+
+	network := config.NetworkConfig{
+		Name:      "mainnet",
+		TargetURL: "http://external:8080",
+		LocalOverrides: &config.LocalOverridesConfig{
+			TargetURL: "http://localhost:8091/api/v1",
+			Tables:    []string{"fct_block", "fct_block_head"},
+		},
+	}
+
+	err := p.AddNetwork(network)
+	require.NoError(t, err)
+
+	// Verify both proxies created
+	assert.Contains(t, p.proxies, "mainnet")
+	assert.Contains(t, p.localProxies, "mainnet")
+	assert.Equal(t, "http://localhost:8091/api/v1", p.localProxyURLs["mainnet"])
+
+	// Verify local tables set
+	assert.True(t, p.localTables["mainnet"]["fct_block"])
+	assert.True(t, p.localTables["mainnet"]["fct_block_head"])
+	assert.False(t, p.localTables["mainnet"]["fct_attestation"])
+}
+
+func TestProxy_RemoveNetwork_CleansUpLocalProxy(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	cfg := &config.Config{}
+
+	p := &Proxy{
+		config:         cfg,
+		proxies:        make(map[string]*httputil.ReverseProxy),
+		proxyURLs:      make(map[string]string),
+		localProxies:   make(map[string]*httputil.ReverseProxy),
+		localProxyURLs: make(map[string]string),
+		localTables:    make(map[string]map[string]bool),
+		logger:         logger,
+	}
+
+	network := config.NetworkConfig{
+		Name:      "mainnet",
+		TargetURL: "http://external:8080",
+		LocalOverrides: &config.LocalOverridesConfig{
+			TargetURL: "http://localhost:8091/api/v1",
+			Tables:    []string{"fct_block"},
+		},
+	}
+
+	err := p.AddNetwork(network)
+	require.NoError(t, err)
+
+	p.RemoveNetwork("mainnet")
+
+	assert.NotContains(t, p.proxies, "mainnet")
+	assert.NotContains(t, p.localProxies, "mainnet")
+	assert.NotContains(t, p.localProxyURLs, "mainnet")
+	assert.NotContains(t, p.localTables, "mainnet")
+}
+
+func TestProxy_ServeHTTP_HybridRouting(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	// Create external backend
+	externalBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"source":"external"}`)) //nolint:errcheck // test
+	}))
+	defer externalBackend.Close()
+
+	// Create local backend
+	localBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"source":"local"}`)) //nolint:errcheck // test
+	}))
+	defer localBackend.Close()
+
+	cfg := &config.Config{}
+
+	p := &Proxy{
+		config:         cfg,
+		proxies:        make(map[string]*httputil.ReverseProxy),
+		proxyURLs:      make(map[string]string),
+		localProxies:   make(map[string]*httputil.ReverseProxy),
+		localProxyURLs: make(map[string]string),
+		localTables:    make(map[string]map[string]bool),
+		logger:         logger,
+	}
+
+	network := config.NetworkConfig{
+		Name:      "mainnet",
+		TargetURL: externalBackend.URL,
+		LocalOverrides: &config.LocalOverridesConfig{
+			TargetURL: localBackend.URL,
+			Tables:    []string{"fct_block"},
+		},
+	}
+
+	err := p.AddNetwork(network)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name         string
+		path         string
+		expectedBody string
+	}{
+		{
+			name:         "overridden table routes to local",
+			path:         "/api/v1/mainnet/fct_block",
+			expectedBody: `{"source":"local"}`,
+		},
+		{
+			name:         "non-overridden table routes to external",
+			path:         "/api/v1/mainnet/fct_attestation",
+			expectedBody: `{"source":"external"}`,
+		},
+		{
+			name:         "bounds routes to external",
+			path:         "/api/v1/mainnet/bounds",
+			expectedBody: `{"source":"external"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, http.NoBody)
+			rec := httptest.NewRecorder()
+
+			p.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Contains(t, rec.Body.String(), tt.expectedBody)
+		})
+	}
+}
+
 func TestProxy_ConcurrentAccess(t *testing.T) {
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
@@ -429,10 +599,13 @@ func TestProxy_ConcurrentAccess(t *testing.T) {
 	cfg := &config.Config{}
 
 	p := &Proxy{
-		config:    cfg,
-		proxies:   make(map[string]*httputil.ReverseProxy),
-		proxyURLs: make(map[string]string),
-		logger:    logger,
+		config:         cfg,
+		proxies:        make(map[string]*httputil.ReverseProxy),
+		proxyURLs:      make(map[string]string),
+		localProxies:   make(map[string]*httputil.ReverseProxy),
+		localProxyURLs: make(map[string]string),
+		localTables:    make(map[string]map[string]bool),
+		logger:         logger,
 	}
 
 	// Add network

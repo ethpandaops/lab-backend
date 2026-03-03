@@ -116,7 +116,15 @@ func (c *client) SetNX(
 	value string,
 	ttl time.Duration,
 ) (bool, error) {
-	return c.client.SetNX(ctx, key, value, ttl).Result()
+	err := c.client.SetArgs(ctx, key, value, redis.SetArgs{
+		Mode: "NX",
+		TTL:  ttl,
+	}).Err()
+	if err == redis.Nil {
+		return false, nil
+	}
+
+	return err == nil, err
 }
 
 // GetClient returns the underlying go-redis client for advanced operations.

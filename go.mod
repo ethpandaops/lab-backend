@@ -1,6 +1,6 @@
 module github.com/ethpandaops/lab-backend
 
-go 1.26.0
+go 1.26.1
 
 require (
 	github.com/alicebob/miniredis/v2 v2.37.0
@@ -23,11 +23,11 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.66.1 // indirect
-	github.com/prometheus/procfs v0.16.1 // indirect
+	github.com/prometheus/common v0.67.5 // indirect
+	github.com/prometheus/procfs v0.20.1 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	golang.org/x/sys v0.35.0 // indirect
-	google.golang.org/protobuf v1.36.8 // indirect
+	go.yaml.in/yaml/v2 v2.4.4 // indirect
+	golang.org/x/sys v0.42.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 )

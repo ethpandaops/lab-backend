@@ -266,9 +266,7 @@ func TestService_Concurrent(t *testing.T) {
 
 	// Concurrent reads
 	for range 10 {
-
 		wg.Go(func() {
-
 			_ = svc.GetWallclock("mainnet")
 			_ = svc.CalculateSlotStartTime("mainnet", 1000)
 		})

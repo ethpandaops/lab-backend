@@ -90,7 +90,6 @@ func (h *GasProfilerHandler) Start() {
 	h.checkHealth()
 
 	h.wg.Go(func() {
-
 		ticker := time.NewTicker(h.cfg.HealthInterval)
 		defer ticker.Stop()
 

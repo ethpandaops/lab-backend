@@ -676,10 +676,3 @@ func TestConfigHandler_ForksAndBlobScheduleInResponse(t *testing.T) {
 	assert.Equal(t, int64(1750000000), network.BlobSchedule[1].Timestamp)
 	assert.Equal(t, int64(15), network.BlobSchedule[1].MaxBlobsPerBlock)
 }
-
-// Helper function to create bool pointers.
-//
-//go:fix inline
-func boolPtr(b bool) *bool {
-	return new(b)
-}

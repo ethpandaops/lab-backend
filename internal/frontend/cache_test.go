@@ -317,9 +317,7 @@ func TestRouteIndexCache_ConcurrentAccess(t *testing.T) {
 
 	// Spawn 50 readers
 	for range 50 {
-
 		wg.Go(func() {
-
 			routes := []string{"/", "/about", "/unknown", ""}
 			for j := range iterations {
 				route := routes[j%len(routes)]

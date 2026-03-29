@@ -5,7 +5,7 @@ import "time"
 // Config holds Redis client configuration.
 type Config struct {
 	Address      string
-	Password     string //nolint:gosec // Config field, not a hardcoded secret.
+	Password     string
 	DB           int
 	DialTimeout  time.Duration
 	ReadTimeout  time.Duration

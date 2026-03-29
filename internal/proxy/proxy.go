@@ -136,7 +136,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Forward request to selected backend
 	// Proxy targets are pre-configured from admin config, not user input.
-	selectedProxy.ServeHTTP(w, r) //nolint:gosec // G704: proxy targets are from trusted config
+	selectedProxy.ServeHTTP(w, r)
 }
 
 // createReverseProxy creates and configures a ReverseProxy for a target URL.

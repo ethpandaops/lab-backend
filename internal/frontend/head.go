@@ -17,11 +17,11 @@ type HeadData map[string]RouteHead
 
 // RouteHead represents the head metadata for a specific route.
 type RouteHead struct {
-	Meta    []interface{} `json:"meta,omitempty"`
-	Links   []interface{} `json:"links,omitempty"`
-	Styles  []interface{} `json:"styles,omitempty"`
-	Scripts []interface{} `json:"scripts,omitempty"`
-	Raw     string        `json:"raw"` // Pre-rendered HTML to inject
+	Meta    []any  `json:"meta,omitempty"`
+	Links   []any  `json:"links,omitempty"`
+	Styles  []any  `json:"styles,omitempty"`
+	Scripts []any  `json:"scripts,omitempty"`
+	Raw     string `json:"raw"` // Pre-rendered HTML to inject
 }
 
 // LoadHeadData reads and parses head.json from the filesystem.

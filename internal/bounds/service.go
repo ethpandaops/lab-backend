@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"net/http"
 	"sync"
@@ -208,9 +209,7 @@ func (s *Service) fetchBoundsForNetwork(
 		LastUpdated: time.Now(),
 	}
 
-	for table, bounds := range externalBounds.Tables {
-		merged.Tables[table] = bounds
-	}
+	maps.Copy(merged.Tables, externalBounds.Tables)
 
 	for table, bounds := range localBounds.Tables {
 		if localTableSet[table] {

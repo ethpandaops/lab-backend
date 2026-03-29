@@ -47,10 +47,7 @@ func TestRateLimit_AllowsUnderLimit(t *testing.T) {
 		allowFunc: func(ctx context.Context, ip, key string, lim int, window time.Duration) (bool, int, time.Time, error) {
 			requestCount++
 
-			remaining := limit - requestCount
-			if remaining < 0 {
-				remaining = 0
-			}
+			remaining := max(limit-requestCount, 0)
 
 			return requestCount <= limit, remaining, time.Now().Add(1 * time.Minute), nil
 		},
@@ -79,7 +76,7 @@ func TestRateLimit_AllowsUnderLimit(t *testing.T) {
 	wrapped := middleware(handler)
 
 	// Send N requests (all should succeed)
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		req := httptest.NewRequest(http.MethodGet, "/api/data", http.NoBody)
 		rec := httptest.NewRecorder()
 
@@ -105,10 +102,7 @@ func TestRateLimit_DeniesOverLimit(t *testing.T) {
 		allowFunc: func(ctx context.Context, ip, key string, lim int, window time.Duration) (bool, int, time.Time, error) {
 			requestCount++
 
-			remaining := limit - requestCount
-			if remaining < 0 {
-				remaining = 0
-			}
+			remaining := max(limit-requestCount, 0)
 
 			allowed := requestCount <= limit
 
@@ -139,7 +133,7 @@ func TestRateLimit_DeniesOverLimit(t *testing.T) {
 	wrapped := middleware(handler)
 
 	// Send N requests (should all succeed)
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		req := httptest.NewRequest(http.MethodGet, "/api/test", http.NoBody)
 		rec := httptest.NewRecorder()
 
@@ -765,10 +759,7 @@ func TestRateLimit_Integration_RealScenario(t *testing.T) {
 		allowFunc: func(ctx context.Context, ip, key string, limit int, window time.Duration) (bool, int, time.Time, error) {
 			requestCounts[ip]++
 
-			remaining := limit - requestCounts[ip]
-			if remaining < 0 {
-				remaining = 0
-			}
+			remaining := max(limit-requestCounts[ip], 0)
 
 			allowed := requestCounts[ip] <= limit
 

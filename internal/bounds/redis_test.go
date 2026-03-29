@@ -165,8 +165,7 @@ func TestRedisProvider_FollowerPolling(t *testing.T) {
 	require.True(t, ok, "provider should be *RedisProvider")
 
 	// Manually start the refresh loop (skip Start() readiness check)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	provider.wg.Add(1)
 
@@ -213,8 +212,7 @@ func TestRedisProvider_PanicRecovery(t *testing.T) {
 	provider, ok := providerInterface.(*RedisProvider)
 	require.True(t, ok, "provider should be *RedisProvider")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Manually start the refresh loop
 	provider.wg.Add(1)
@@ -243,7 +241,7 @@ func TestRedisProvider_PanicRecovery(t *testing.T) {
 }
 
 // mustMarshal is a helper to marshal test data.
-func mustMarshal(t *testing.T, v interface{}) string {
+func mustMarshal(t *testing.T, v any) string {
 	t.Helper()
 
 	data, err := json.Marshal(v)

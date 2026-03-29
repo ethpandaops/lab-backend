@@ -417,7 +417,7 @@ func TestProxy_NetworkCount(t *testing.T) {
 	assert.Equal(t, 0, p.NetworkCount())
 
 	// Add networks
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		network := config.NetworkConfig{
 			Name:      "network-" + string(rune('a'+i)),
 			TargetURL: "http://localhost:8080",
@@ -619,7 +619,7 @@ func TestProxy_ConcurrentAccess(t *testing.T) {
 	// Spawn multiple concurrent requests
 	done := make(chan bool, 100)
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		go func() {
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/mainnet/bounds", http.NoBody)
 			rec := httptest.NewRecorder()
@@ -633,7 +633,7 @@ func TestProxy_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all requests
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		<-done
 	}
 }

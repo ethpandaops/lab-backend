@@ -80,7 +80,7 @@ func TestService_Allow_UnderLimit(t *testing.T) {
 	key := "test"
 
 	// Make requests up to the limit
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		allowed, remaining, resetAt, err := svc.Allow(ctx, ip, key, limit, 1*time.Minute)
 
 		require.NoError(t, err)
@@ -171,7 +171,7 @@ func TestService_Allow_WindowExpiry(t *testing.T) {
 	key := "expiry_test"
 
 	// Use up the limit
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		allowed, _, _, err := svc.Allow(ctx, ip, key, limit, window)
 		require.NoError(t, err)
 		assert.True(t, allowed, "request %d should be allowed", i+1)
@@ -279,7 +279,7 @@ func TestService_DifferentIPsSeparateLimits(t *testing.T) {
 
 	// Each IP should have its own limit
 	for _, ip := range ips {
-		for i := 0; i < limit; i++ {
+		for i := range limit {
 			allowed, remaining, _, err := svc.Allow(ctx, ip, key, limit, 1*time.Minute)
 			require.NoError(t, err)
 			assert.True(t, allowed, "IP %s request %d should be allowed", ip, i+1)
@@ -319,7 +319,7 @@ func TestService_DifferentKeysSeparateLimits(t *testing.T) {
 
 	// Each key should have its own limit for the same IP
 	for _, key := range keys {
-		for i := 0; i < limit; i++ {
+		for i := range limit {
 			allowed, remaining, _, err := svc.Allow(ctx, ip, key, limit, 1*time.Minute)
 			require.NoError(t, err)
 			assert.True(t, allowed, "key %s request %d should be allowed", key, i+1)
@@ -395,7 +395,7 @@ func TestService_Allow_ConcurrentRequests(t *testing.T) {
 	results := make(chan result, numGoroutines)
 
 	// Launch concurrent requests
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			allowed, _, _, err := svc.Allow(ctx, ip, key, limit, 1*time.Minute)
 			results <- result{allowed: allowed, err: err}
@@ -406,7 +406,7 @@ func TestService_Allow_ConcurrentRequests(t *testing.T) {
 	allowedCount := 0
 	deniedCount := 0
 
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		res := <-results
 		require.NoError(t, res.err)
 

@@ -12,9 +12,9 @@ func TestInjectConfigAndBounds(t *testing.T) {
 	tests := []struct {
 		name        string
 		html        string
-		config      interface{}
-		bounds      interface{}
-		version     interface{}
+		config      any
+		bounds      any
+		version     any
 		expectError bool
 		errorMsg    string
 		contains    []string
@@ -83,11 +83,11 @@ func TestInjectConfigAndBounds(t *testing.T) {
 		{
 			name: "complex nested data",
 			html: "<html><head></head></html>",
-			config: map[string]interface{}{
+			config: map[string]any{
 				"networks": []string{"mainnet", "sepolia"},
 				"settings": map[string]bool{"enabled": true},
 			},
-			bounds: map[string]interface{}{
+			bounds: map[string]any{
 				"mainnet": map[string]int{"min": 0, "max": 1000},
 			},
 			version: map[string]string{"version": "v2.0.0"},
@@ -167,20 +167,20 @@ func TestInjectAll(t *testing.T) {
 </body>
 </html>`)
 
-	configData := map[string]interface{}{
-		"networks": []map[string]interface{}{
+	configData := map[string]any{
+		"networks": []map[string]any{
 			{"name": "mainnet"},
 		},
 	}
 
-	boundsData := map[string]interface{}{
-		"mainnet": map[string]interface{}{
+	boundsData := map[string]any{
+		"mainnet": map[string]any{
 			"min": 0,
 			"max": 100,
 		},
 	}
 
-	versionData := map[string]interface{}{
+	versionData := map[string]any{
 		"version":    "v1.0.0",
 		"git_commit": "abc123",
 		"build_date": "2024-01-01",
@@ -244,7 +244,7 @@ func TestInjectAll(t *testing.T) {
 	})
 
 	t.Run("escapes script tags in JSON", func(t *testing.T) {
-		configWithScript := map[string]interface{}{
+		configWithScript := map[string]any{
 			"test": "</script><script>alert('XSS')</script>",
 		}
 

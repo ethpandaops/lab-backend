@@ -88,7 +88,7 @@ func TestConfigHandler_ServeHTTP(t *testing.T) {
 			configNetworks: []config.NetworkConfig{
 				{
 					Name:    "sepolia",
-					Enabled: boolPtr(false),
+					Enabled: new(false),
 				},
 			},
 			features:       []config.FeatureSettings{},
@@ -678,6 +678,8 @@ func TestConfigHandler_ForksAndBlobScheduleInResponse(t *testing.T) {
 }
 
 // Helper function to create bool pointers.
+//
+//go:fix inline
 func boolPtr(b bool) *bool {
-	return &b
+	return new(b)
 }

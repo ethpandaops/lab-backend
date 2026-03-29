@@ -9,7 +9,7 @@ import (
 
 // InjectConfigAndBounds injects config, bounds, and version JSON into HTML head in a single script tag.
 // Finds <head> tag and inserts: <script>window.__CONFIG__={...}; window.__BOUNDS__={...}; window.__VERSION__={...};</script>.
-func InjectConfigAndBounds(htmlContent []byte, configData interface{}, boundsData interface{}, versionData interface{}) ([]byte, error) {
+func InjectConfigAndBounds(htmlContent []byte, configData any, boundsData any, versionData any) ([]byte, error) {
 	// Serialize config to JSON
 	configJSON, err := json.Marshal(configData)
 	if err != nil {
@@ -63,7 +63,7 @@ func InjectConfigAndBounds(htmlContent []byte, configData interface{}, boundsDat
 // InjectAll injects config, bounds, version, and route-specific head HTML into the HTML head.
 // This inserts both the script tag with window.__CONFIG__, window.__BOUNDS__, and window.__VERSION__,
 // and the raw head HTML for the specific route.
-func InjectAll(htmlContent []byte, configData interface{}, boundsData interface{}, versionData interface{}, headRaw string) ([]byte, error) {
+func InjectAll(htmlContent []byte, configData any, boundsData any, versionData any, headRaw string) ([]byte, error) {
 	// First inject config, bounds, and version
 	result, err := InjectConfigAndBounds(htmlContent, configData, boundsData, versionData)
 	if err != nil {

@@ -58,8 +58,8 @@ func ExtractTableName(remainingPath string) string {
 		return ""
 	}
 
-	if idx := strings.Index(trimmed, "/"); idx != -1 {
-		return trimmed[:idx]
+	if before, _, ok := strings.Cut(trimmed, "/"); ok {
+		return before
 	}
 
 	return trimmed

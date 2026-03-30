@@ -265,19 +265,15 @@ func TestService_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Concurrent reads
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+	for range 10 {
+		wg.Go(func() {
 			_ = svc.GetWallclock("mainnet")
 			_ = svc.CalculateSlotStartTime("mainnet", 1000)
-		}()
+		})
 	}
 
 	// Concurrent network additions
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		wg.Add(1)
 
 		networkName := "testnet"

@@ -377,7 +377,7 @@ func TestManagerMatch_Concurrent(t *testing.T) {
 
 	done := make(chan bool, numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(i int) {
 			defer func() { done <- true }()
 
@@ -388,7 +388,7 @@ func TestManagerMatch_Concurrent(t *testing.T) {
 				"/styles/main.css",
 			}
 
-			for j := 0; j < 100; j++ {
+			for j := range 100 {
 				path := paths[j%len(paths)]
 				headers := mgr.Match(path)
 				assert.NotNil(t, headers)
@@ -397,7 +397,7 @@ func TestManagerMatch_Concurrent(t *testing.T) {
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		<-done
 	}
 }

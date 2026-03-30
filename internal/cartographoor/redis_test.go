@@ -333,7 +333,7 @@ func TestRedisProvider_NotifyChannel(t *testing.T) {
 }
 
 // mustMarshalCarto is a helper to marshal test data.
-func mustMarshalCarto(t *testing.T, v interface{}) string {
+func mustMarshalCarto(t *testing.T, v any) string {
 	t.Helper()
 
 	data, err := json.Marshal(v)

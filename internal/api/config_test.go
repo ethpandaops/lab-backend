@@ -88,7 +88,7 @@ func TestConfigHandler_ServeHTTP(t *testing.T) {
 			configNetworks: []config.NetworkConfig{
 				{
 					Name:    "sepolia",
-					Enabled: boolPtr(false),
+					Enabled: new(false),
 				},
 			},
 			features:       []config.FeatureSettings{},
@@ -675,9 +675,4 @@ func TestConfigHandler_ForksAndBlobScheduleInResponse(t *testing.T) {
 	assert.Equal(t, int64(412672), network.BlobSchedule[1].Epoch)
 	assert.Equal(t, int64(1750000000), network.BlobSchedule[1].Timestamp)
 	assert.Equal(t, int64(15), network.BlobSchedule[1].MaxBlobsPerBlock)
-}
-
-// Helper function to create bool pointers.
-func boolPtr(b bool) *bool {
-	return &b
 }

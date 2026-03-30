@@ -23,9 +23,9 @@ type RouteIndexCache struct {
 func (ric *RouteIndexCache) PrewarmRoutes(
 	logger logrus.FieldLogger,
 	filesystem fs.FS,
-	configData interface{},
-	boundsData interface{},
-	versionData interface{},
+	configData any,
+	boundsData any,
+	versionData any,
 ) error {
 	// Open and read index.html
 	file, err := filesystem.Open(indexFileName)
@@ -135,9 +135,9 @@ func (ric *RouteIndexCache) GetForRoute(route string) []byte {
 
 // Update refreshes all cached routes with new config, bounds, and version data.
 func (ric *RouteIndexCache) Update(
-	configData interface{},
-	boundsData interface{},
-	versionData interface{},
+	configData any,
+	boundsData any,
+	versionData any,
 ) error {
 	ric.mu.Lock()
 	defer ric.mu.Unlock()

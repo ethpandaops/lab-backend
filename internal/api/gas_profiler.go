@@ -89,11 +89,7 @@ func (h *GasProfilerHandler) Start() {
 	// Run first health check immediately so we know status at boot
 	h.checkHealth()
 
-	h.wg.Add(1)
-
-	go func() {
-		defer h.wg.Done()
-
+	h.wg.Go(func() {
 		ticker := time.NewTicker(h.cfg.HealthInterval)
 		defer ticker.Stop()
 
@@ -105,7 +101,7 @@ func (h *GasProfilerHandler) Start() {
 				return
 			}
 		}
-	}()
+	})
 
 	h.logger.WithField("interval", h.cfg.HealthInterval).
 		Info("Started endpoint health poller")
@@ -152,7 +148,7 @@ func (h *GasProfilerHandler) isEndpointSynced(ep config.GasProfilerEndpoint) boo
 	rpcReq := jsonRPCRequest{
 		JSONRPC: "2.0",
 		Method:  "eth_syncing",
-		Params:  []interface{}{},
+		Params:  []any{},
 		ID:      1,
 	}
 
@@ -274,10 +270,10 @@ func (h *GasProfilerHandler) getEndpoint(network string) *config.GasProfilerEndp
 
 // jsonRPCRequest represents a JSON-RPC request.
 type jsonRPCRequest struct {
-	JSONRPC string      `json:"jsonrpc"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params"`
-	ID      int         `json:"id"`
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+	Params  any    `json:"params"`
+	ID      int    `json:"id"`
 }
 
 // jsonRPCResponse represents a JSON-RPC response.
@@ -296,17 +292,17 @@ type jsonRPCError struct {
 
 // SimulateBlockRequest is the REST request for block simulation.
 type SimulateBlockRequest struct {
-	BlockNumber uint64                 `json:"blockNumber"`
-	GasSchedule map[string]interface{} `json:"gasSchedule"`
-	MaxGasLimit bool                   `json:"maxGasLimit,omitempty"`
+	BlockNumber uint64         `json:"blockNumber"`
+	GasSchedule map[string]any `json:"gasSchedule"`
+	MaxGasLimit bool           `json:"maxGasLimit,omitempty"`
 }
 
 // SimulateTransactionRequest is the REST request for transaction simulation.
 type SimulateTransactionRequest struct {
-	TransactionHash string                 `json:"transactionHash"`
-	BlockNumber     uint64                 `json:"blockNumber,omitempty"`
-	GasSchedule     map[string]interface{} `json:"gasSchedule"`
-	MaxGasLimit     bool                   `json:"maxGasLimit,omitempty"`
+	TransactionHash string         `json:"transactionHash"`
+	BlockNumber     uint64         `json:"blockNumber,omitempty"`
+	GasSchedule     map[string]any `json:"gasSchedule"`
+	MaxGasLimit     bool           `json:"maxGasLimit,omitempty"`
 }
 
 // ServeHTTP routes requests to the appropriate handler method.
@@ -367,7 +363,7 @@ func (h *GasProfilerHandler) handleSimulateBlock(w http.ResponseWriter, r *http.
 	}
 
 	// Build JSON-RPC request
-	params := map[string]interface{}{
+	params := map[string]any{
 		"blockNumber": req.BlockNumber,
 		"gasSchedule": req.GasSchedule,
 	}
@@ -379,7 +375,7 @@ func (h *GasProfilerHandler) handleSimulateBlock(w http.ResponseWriter, r *http.
 	rpcReq := jsonRPCRequest{
 		JSONRPC: "2.0",
 		Method:  "xatu_simulateBlockGas",
-		Params:  []interface{}{params},
+		Params:  []any{params},
 		ID:      1,
 	}
 
@@ -402,7 +398,7 @@ func (h *GasProfilerHandler) handleSimulateTx(w http.ResponseWriter, r *http.Req
 	}
 
 	// Build JSON-RPC request
-	params := map[string]interface{}{
+	params := map[string]any{
 		"transactionHash": req.TransactionHash,
 		"gasSchedule":     req.GasSchedule,
 	}
@@ -418,7 +414,7 @@ func (h *GasProfilerHandler) handleSimulateTx(w http.ResponseWriter, r *http.Req
 	rpcReq := jsonRPCRequest{
 		JSONRPC: "2.0",
 		Method:  "xatu_simulateTransactionGas",
-		Params:  []interface{}{params},
+		Params:  []any{params},
 		ID:      1,
 	}
 
@@ -454,7 +450,7 @@ func (h *GasProfilerHandler) handleGasSchedule(w http.ResponseWriter, r *http.Re
 	rpcReq := jsonRPCRequest{
 		JSONRPC: "2.0",
 		Method:  "xatu_getGasSchedule",
-		Params:  []interface{}{blockNumber},
+		Params:  []any{blockNumber},
 		ID:      1,
 	}
 

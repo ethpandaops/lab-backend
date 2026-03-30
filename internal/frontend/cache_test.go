@@ -17,9 +17,9 @@ func TestRouteIndexCache_PrewarmRoutes(t *testing.T) {
 	tests := []struct {
 		name        string
 		filesystem  fs.FS
-		configData  interface{}
-		boundsData  interface{}
-		versionData interface{}
+		configData  any
+		boundsData  any
+		versionData any
 		expectError bool
 		errorMsg    string
 	}{
@@ -316,14 +316,10 @@ func TestRouteIndexCache_ConcurrentAccess(t *testing.T) {
 	)
 
 	// Spawn 50 readers
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+	for range 50 {
+		wg.Go(func() {
 			routes := []string{"/", "/about", "/unknown", ""}
-			for j := 0; j < iterations; j++ {
+			for j := range iterations {
 				route := routes[j%len(routes)]
 				html := cache.GetForRoute(route)
 				original := cache.GetOriginal()
@@ -331,17 +327,17 @@ func TestRouteIndexCache_ConcurrentAccess(t *testing.T) {
 				assert.NotEmpty(t, html)
 				assert.NotEmpty(t, original)
 			}
-		}()
+		})
 	}
 
 	// Spawn 10 writers
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 
 		go func(id int) {
 			defer wg.Done()
 
-			for j := 0; j < iterations; j++ {
+			for j := range iterations {
 				config := map[string]string{
 					"writer": fmt.Sprintf("writer-%d", id),
 					"iter":   fmt.Sprintf("%d", j),

@@ -361,7 +361,7 @@ func TestElector_ConcurrentAccess(t *testing.T) {
 	// Concurrently read IsLeader multiple times
 	done := make(chan bool, 100)
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		go func() {
 			// This should not race
 			_ = elector.IsLeader()
@@ -371,7 +371,7 @@ func TestElector_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		<-done
 	}
 }

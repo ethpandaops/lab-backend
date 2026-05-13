@@ -9,16 +9,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// unmatchedRoute is the sentinel value used when a request has no matched
-// ServeMux pattern. Collapses unmatched URLs (scanner probes, typos) into a
-// single series instead of one series per unique URL.
 const unmatchedRoute = "unmatched"
 
 var (
 	httpRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "http_requests_total",
-			Help: "Total number of HTTP requests. The path label is the matched ServeMux route pattern, not the raw URL.",
+			Help: "Total number of HTTP requests",
 		},
 		[]string{"method", "path", "status"},
 	)
@@ -26,7 +23,7 @@ var (
 	httpRequestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "http_request_duration_seconds",
-			Help:    "HTTP request duration in seconds. The path label is the matched ServeMux route pattern, not the raw URL.",
+			Help:    "HTTP request duration in seconds",
 			Buckets: prometheus.DefBuckets,
 		},
 		[]string{"method", "path"},
@@ -35,7 +32,7 @@ var (
 	httpRequestSize = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Name: "http_request_size_bytes",
-			Help: "HTTP request size in bytes. The path label is the matched ServeMux route pattern, not the raw URL.",
+			Help: "HTTP request size in bytes",
 		},
 		[]string{"method", "path"},
 	)
@@ -43,7 +40,7 @@ var (
 	httpResponseSize = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Name: "http_response_size_bytes",
-			Help: "HTTP response size in bytes. The path label is the matched ServeMux route pattern, not the raw URL.",
+			Help: "HTTP response size in bytes",
 		},
 		[]string{"method", "path"},
 	)
@@ -100,9 +97,6 @@ func (mrw *metricsResponseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// routePattern returns the ServeMux pattern that matched the request, or
-// unmatchedRoute if no pattern matched. Using the raw r.URL.Path here would
-// give unbounded label cardinality (one series per unique URL).
 func routePattern(r *http.Request) string {
 	if r.Pattern != "" {
 		return r.Pattern
@@ -124,13 +118,10 @@ func Metrics() func(http.Handler) http.Handler {
 				bytesWritten:   0,
 			}
 
-			// Snapshot request size before invoking the chain.
 			contentLength := r.ContentLength
 
-			// Call next handler — ServeMux populates r.Pattern during routing.
 			next.ServeHTTP(mrw, r)
 
-			// Record metrics
 			duration := time.Since(start)
 			route := routePattern(r)
 

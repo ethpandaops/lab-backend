@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+const unmatchedRoute = "unmatched"
+
 var (
 	httpRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -95,6 +97,14 @@ func (mrw *metricsResponseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+func routePattern(r *http.Request) string {
+	if r.Pattern != "" {
+		return r.Pattern
+	}
+
+	return unmatchedRoute
+}
+
 // Metrics returns middleware that collects Prometheus metrics.
 func Metrics() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -108,31 +118,31 @@ func Metrics() func(http.Handler) http.Handler {
 				bytesWritten:   0,
 			}
 
-			// Record request size
-			if r.ContentLength > 0 {
-				httpRequestSize.WithLabelValues(r.Method, r.URL.Path).Observe(float64(r.ContentLength))
-			}
+			contentLength := r.ContentLength
 
-			// Call next handler
 			next.ServeHTTP(mrw, r)
 
-			// Record metrics
 			duration := time.Since(start)
+			route := routePattern(r)
+
+			if contentLength > 0 {
+				httpRequestSize.WithLabelValues(r.Method, route).Observe(float64(contentLength))
+			}
 
 			httpRequestsTotal.WithLabelValues(
 				r.Method,
-				r.URL.Path,
+				route,
 				strconv.Itoa(mrw.statusCode),
 			).Inc()
 
 			httpRequestDuration.WithLabelValues(
 				r.Method,
-				r.URL.Path,
+				route,
 			).Observe(duration.Seconds())
 
 			httpResponseSize.WithLabelValues(
 				r.Method,
-				r.URL.Path,
+				route,
 			).Observe(float64(mrw.bytesWritten))
 		})
 	}

@@ -9,11 +9,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// unmatchedRoute is the sentinel value used when a request has no matched
+// ServeMux pattern. Collapses unmatched URLs (scanner probes, typos) into a
+// single series instead of one series per unique URL.
+const unmatchedRoute = "unmatched"
+
 var (
 	httpRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "http_requests_total",
-			Help: "Total number of HTTP requests",
+			Help: "Total number of HTTP requests. The path label is the matched ServeMux route pattern, not the raw URL.",
 		},
 		[]string{"method", "path", "status"},
 	)
@@ -21,7 +26,7 @@ var (
 	httpRequestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "http_request_duration_seconds",
-			Help:    "HTTP request duration in seconds",
+			Help:    "HTTP request duration in seconds. The path label is the matched ServeMux route pattern, not the raw URL.",
 			Buckets: prometheus.DefBuckets,
 		},
 		[]string{"method", "path"},
@@ -30,7 +35,7 @@ var (
 	httpRequestSize = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Name: "http_request_size_bytes",
-			Help: "HTTP request size in bytes",
+			Help: "HTTP request size in bytes. The path label is the matched ServeMux route pattern, not the raw URL.",
 		},
 		[]string{"method", "path"},
 	)
@@ -38,7 +43,7 @@ var (
 	httpResponseSize = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Name: "http_response_size_bytes",
-			Help: "HTTP response size in bytes",
+			Help: "HTTP response size in bytes. The path label is the matched ServeMux route pattern, not the raw URL.",
 		},
 		[]string{"method", "path"},
 	)
@@ -95,6 +100,17 @@ func (mrw *metricsResponseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// routePattern returns the ServeMux pattern that matched the request, or
+// unmatchedRoute if no pattern matched. Using the raw r.URL.Path here would
+// give unbounded label cardinality (one series per unique URL).
+func routePattern(r *http.Request) string {
+	if r.Pattern != "" {
+		return r.Pattern
+	}
+
+	return unmatchedRoute
+}
+
 // Metrics returns middleware that collects Prometheus metrics.
 func Metrics() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -108,31 +124,34 @@ func Metrics() func(http.Handler) http.Handler {
 				bytesWritten:   0,
 			}
 
-			// Record request size
-			if r.ContentLength > 0 {
-				httpRequestSize.WithLabelValues(r.Method, r.URL.Path).Observe(float64(r.ContentLength))
-			}
+			// Snapshot request size before invoking the chain.
+			contentLength := r.ContentLength
 
-			// Call next handler
+			// Call next handler — ServeMux populates r.Pattern during routing.
 			next.ServeHTTP(mrw, r)
 
 			// Record metrics
 			duration := time.Since(start)
+			route := routePattern(r)
+
+			if contentLength > 0 {
+				httpRequestSize.WithLabelValues(r.Method, route).Observe(float64(contentLength))
+			}
 
 			httpRequestsTotal.WithLabelValues(
 				r.Method,
-				r.URL.Path,
+				route,
 				strconv.Itoa(mrw.statusCode),
 			).Inc()
 
 			httpRequestDuration.WithLabelValues(
 				r.Method,
-				r.URL.Path,
+				route,
 			).Observe(duration.Seconds())
 
 			httpResponseSize.WithLabelValues(
 				r.Method,
-				r.URL.Path,
+				route,
 			).Observe(float64(mrw.bytesWritten))
 		})
 	}

@@ -103,6 +103,7 @@ func TestMetricsMiddleware_RequestSizeRecordedAgainstPattern(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/upload", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
+
 		w.WriteHeader(http.StatusAccepted)
 	})
 
@@ -114,7 +115,6 @@ func TestMetricsMiddleware_RequestSizeRecordedAgainstPattern(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusAccepted, rec.Code)
 
-	// httpRequestSize is a Summary; the labeled vector should now have one entry.
 	count := testutil.CollectAndCount(httpRequestSize, "http_request_size_bytes")
 	assert.Equal(t, 1, count, "request size should be observed exactly once against the route pattern")
 }
@@ -162,8 +162,10 @@ func TestRoutePattern_ReturnsMatchedPattern(t *testing.T) {
 	mux := http.NewServeMux()
 
 	var observed string
+
 	mux.HandleFunc("GET /api/v1/{network}/bounds", func(w http.ResponseWriter, r *http.Request) {
 		observed = routePattern(r)
+
 		w.WriteHeader(http.StatusOK)
 	})
 

@@ -111,13 +111,13 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Clean path and remove leading slash
 	cleanPath := path.Clean(r.URL.Path)
 	if cleanPath == "/" {
-		cleanPath = "index.html"
+		cleanPath = indexFileName
 	} else {
 		cleanPath = strings.TrimPrefix(cleanPath, "/")
 	}
 
 	// Special handling for index.html (root or explicit)
-	if cleanPath == "index.html" || cleanPath == "" {
+	if cleanPath == indexFileName || cleanPath == "" {
 		f.serveIndex(w, r)
 
 		return

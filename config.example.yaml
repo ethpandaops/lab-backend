@@ -108,6 +108,18 @@ gas_profiler:
     #   network: "holesky"
     #   url: "http://erigon-holesky:8545"
 
+# Beacon block & blob download proxy
+# Streams beacon blocks (from the block archive) and blob sidecars (from the
+# per-network blob archive) back to clients as attachments, so downloads work
+# without the archives' inline disposition / missing CORS headers.
+download:
+  enabled: true
+  # Block archive base URL (serves blocks by slot + block root).
+  block_archive_url: "https://block-archiver.analytics.production.platform.ethpandaops.io"
+  # Blob archive URL template; {network} is replaced with the network name.
+  blob_archive_pattern: "https://blob-archive.{network}.ethpandaops.io"
+  request_timeout: 30s
+
 # Network configuration (optional overrides and additions)
 # Cartographoor provides base networks - use this section to:
 # 1. Disable specific cartographoor networks

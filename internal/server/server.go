@@ -77,6 +77,13 @@ func New(
 		}).Info("Registered gas profiler routes")
 	}
 
+	// Beacon block & blob download proxy (must come before wildcard proxy)
+	if cfg.Download.Enabled {
+		downloadHandler := api.NewDownloadHandler(&cfg.Download, cartographoorProvider, logger)
+		mux.Handle("GET /api/v1/download/{network}/{kind}", downloadHandler)
+		logger.WithField("route", "GET /api/v1/download/{network}/{kind}").Info("Registered download route")
+	}
+
 	// Network-based proxy for all other API routes
 	proxyHandler, err := proxy.New(logger.WithField("component", "proxy"), cfg, cartographoorProvider, wallclockSvc)
 	if err != nil {

@@ -25,6 +25,7 @@ type Config struct {
 	RateLimiting  RateLimitingConfig   `yaml:"rate_limiting"`
 	Headers       HeadersConfig        `yaml:"headers"`
 	GasProfiler   GasProfilerConfig    `yaml:"gas_profiler"`
+	Download      DownloadConfig       `yaml:"download"`
 }
 
 // ServerConfig contains HTTP server settings.
@@ -242,6 +243,11 @@ func (c *Config) Validate() error {
 	// Validate gas profiler config
 	if err := c.GasProfiler.Validate(); err != nil {
 		return fmt.Errorf("gas_profiler: %w", err)
+	}
+
+	// Validate download proxy config
+	if err := c.Download.Validate(); err != nil {
+		return fmt.Errorf("download: %w", err)
 	}
 
 	return nil

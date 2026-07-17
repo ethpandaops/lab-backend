@@ -11,13 +11,15 @@ COPY . .
 ARG VERSION=dev
 ARG GIT_COMMIT=dev
 ARG BUILD_DATE=unknown
+ARG FRONTEND_VERSION=
 
 # Build the binary directly (frontend already included via goreleaser extra_files)
 RUN mkdir -p bin && \
     go build -ldflags="-w -s \
     -X github.com/ethpandaops/lab-backend/internal/version.Version=${VERSION} \
     -X github.com/ethpandaops/lab-backend/internal/version.GitCommit=${GIT_COMMIT} \
-    -X github.com/ethpandaops/lab-backend/internal/version.BuildDate=${BUILD_DATE}" \
+    -X github.com/ethpandaops/lab-backend/internal/version.BuildDate=${BUILD_DATE} \
+    -X github.com/ethpandaops/lab-backend/internal/version.FrontendVersion=${FRONTEND_VERSION}" \
     -o bin/lab-backend ./cmd/server
 
 # Runtime stage

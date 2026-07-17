@@ -20,6 +20,7 @@ builds:
       - -X github.com/ethpandaops/lab-backend/internal/version.Version={{.Tag}}
       - -X github.com/ethpandaops/lab-backend/internal/version.GitCommit={{.FullCommit}}
       - -X github.com/ethpandaops/lab-backend/internal/version.BuildDate={{.Date}}
+      - -X github.com/ethpandaops/lab-backend/internal/version.FrontendVersion={{ envOrDefault "FRONTEND_TAG" "" }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
   - id: linux-arm64
@@ -36,7 +37,14 @@ builds:
       - -X github.com/ethpandaops/lab-backend/internal/version.Version={{.Tag}}
       - -X github.com/ethpandaops/lab-backend/internal/version.GitCommit={{.FullCommit}}
       - -X github.com/ethpandaops/lab-backend/internal/version.BuildDate={{.Date}}
+      - -X github.com/ethpandaops/lab-backend/internal/version.FrontendVersion={{ envOrDefault "FRONTEND_TAG" "" }}
     mod_timestamp: "{{ .CommitTimestamp }}"
+release:
+  prerelease: auto
+  make_latest: '{{ not .Prerelease }}'
+  header: |
+    Embedded frontend: [ethpandaops/lab {{ envOrDefault "FRONTEND_TAG" "unknown" }}](https://github.com/ethpandaops/lab/releases/tag/{{ envOrDefault "FRONTEND_TAG" "" }})
+
 checksum:
   name_template: 'checksums.txt'
 snapshot:
@@ -71,6 +79,8 @@ dockers:
       - "--build-arg=VERSION={{.Tag}}"
       - "--build-arg=GIT_COMMIT={{.FullCommit}}"
       - "--build-arg=BUILD_DATE={{.Date}}"
+      - '--build-arg=FRONTEND_VERSION={{ envOrDefault "FRONTEND_TAG" "" }}'
+      - '--label=io.ethpandaops.frontend.version={{ envOrDefault "FRONTEND_TAG" "" }}'
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -97,6 +107,8 @@ dockers:
       - "--build-arg=VERSION={{.Tag}}"
       - "--build-arg=GIT_COMMIT={{.FullCommit}}"
       - "--build-arg=BUILD_DATE={{.Date}}"
+      - '--build-arg=FRONTEND_VERSION={{ envOrDefault "FRONTEND_TAG" "" }}'
+      - '--label=io.ethpandaops.frontend.version={{ envOrDefault "FRONTEND_TAG" "" }}'
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"

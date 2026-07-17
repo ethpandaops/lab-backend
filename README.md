@@ -56,8 +56,13 @@ FRONTEND_BRANCH=develop make run
 
 **Environment Variables:**
 - `FRONTEND_SOURCE` - Path to local frontend source (uses `dist/` directory)
+- `FRONTEND_TAG` - Download an exact frontend release (e.g., `v1.0.70`)
 - `FRONTEND_BRANCH` - Download from specific branch's latest release (e.g., `develop`)
 - `GITHUB_REPO` - GitHub repository for frontend releases (default: `ethpandaops/lab`)
+
+## Releasing
+
+See [RELEASING.md](RELEASING.md). Stable releases are cut automatically when [lab](https://github.com/ethpandaops/lab) publishes a release.
 
 ## Configuration
 

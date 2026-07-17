@@ -52,6 +52,23 @@ func TestGetWithFrontend(t *testing.T) {
 		require.NoError(t, os.RemoveAll(".tmp"))
 	})
 
+	t.Run("prefers build-time frontend version over file", func(t *testing.T) {
+		original := FrontendVersion
+		FrontendVersion = "v9.9.9"
+
+		defer func() { FrontendVersion = original }()
+
+		require.NoError(t, os.MkdirAll(".tmp", 0o755))
+		require.NoError(t, os.WriteFile(".tmp/frontend-version.txt", []byte("frontend-v2.5.0-test"), 0o644))
+
+		info := GetWithFrontend()
+
+		assert.Equal(t, "v9.9.9", info.FrontendVersion)
+
+		// Cleanup
+		require.NoError(t, os.RemoveAll(".tmp"))
+	})
+
 	t.Run("handles missing frontend version file", func(t *testing.T) {
 		// Ensure .tmp directory doesn't exist
 		os.RemoveAll(".tmp")

@@ -12,6 +12,9 @@ var (
 	Version   = "dev"
 	GitCommit = "unknown"
 	BuildDate = "unknown"
+	// FrontendVersion is the embedded frontend release tag. Set via ldflags
+	// for release builds; dev builds fall back to .tmp/frontend-version.txt.
+	FrontendVersion = ""
 )
 
 // Info contains version information.
@@ -32,10 +35,15 @@ func Get() Info {
 }
 
 // GetWithFrontend returns version information including frontend version.
-// It reads the frontend version from .tmp/frontend-version.txt if it exists.
+// It prefers the build-time FrontendVersion and falls back to reading
+// .tmp/frontend-version.txt for dev builds.
 func GetWithFrontend() Info {
 	info := Get()
-	info.FrontendVersion = readFrontendVersion()
+
+	info.FrontendVersion = FrontendVersion
+	if info.FrontendVersion == "" {
+		info.FrontendVersion = readFrontendVersion()
+	}
 
 	return info
 }

@@ -26,6 +26,7 @@ all: build
 
 # Frontend configuration
 FRONTEND_SOURCE ?=
+FRONTEND_TAG ?=
 FRONTEND_BRANCH ?=
 FRONTEND_TARGET ?= web/frontend
 FRONTEND_VERSION_FILE ?= .tmp/frontend-version.txt
@@ -57,7 +58,10 @@ setup-frontend:
 		echo "dev" > $(FRONTEND_VERSION_FILE); \
 		printf "$(GREEN)✓ Copied $(FRONTEND_SOURCE)/dist -> $(FRONTEND_TARGET)$(RESET)\n"; \
 	else \
-		if [ -n "$(FRONTEND_BRANCH)" ]; then \
+		if [ -n "$(FRONTEND_TAG)" ]; then \
+			printf "$(YELLOW)Frontend tag: $(FRONTEND_TAG)$(RESET)\n"; \
+			RELEASE_TAG="$(FRONTEND_TAG)"; \
+		elif [ -n "$(FRONTEND_BRANCH)" ]; then \
 			printf "$(YELLOW)Frontend branch: $(FRONTEND_BRANCH)$(RESET)\n"; \
 			RELEASE_TAG=$$(curl -s "https://api.github.com/repos/$(GITHUB_REPO)/releases" | \
 				grep -o '"tag_name": *"[^"]*"' | \

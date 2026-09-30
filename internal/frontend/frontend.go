@@ -126,6 +126,18 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Try to serve static file
 	file, err := f.fs.Open(cleanPath)
 	if err != nil {
+		if isStaticAssetPath(cleanPath) {
+			// A missing asset must never get index.html: the path-based header policy gives it a
+			// long cache lifetime, so a CDN would cache HTML under the asset URL. This happens
+			// during rolling deploys when a pod is asked for another release's hashed bundle.
+			f.logger.WithField("path", r.URL.Path).Debug("Static asset not found")
+
+			w.Header().Set("Cache-Control", "no-store")
+			http.NotFound(w, r)
+
+			return
+		}
+
 		// File not found - fall back to index.html for SPA routing
 		f.logger.WithFields(logrus.Fields{
 			"path":    r.URL.Path,
@@ -162,6 +174,24 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeContent(w, r, cleanPath, stat.ModTime(), readSeeker)
+}
+
+// staticAssetExtensions are file types the frontend build emits; SPA routes never end in them.
+var staticAssetExtensions = map[string]struct{}{
+	".js": {}, ".mjs": {}, ".css": {}, ".map": {}, ".json": {}, ".wasm": {},
+	".png": {}, ".jpg": {}, ".jpeg": {}, ".gif": {}, ".svg": {}, ".webp": {}, ".avif": {}, ".ico": {},
+	".woff": {}, ".woff2": {}, ".ttf": {}, ".eot": {}, ".txt": {}, ".xml": {}, ".webmanifest": {},
+}
+
+// isStaticAssetPath reports whether a cleaned, slash-less path names a static file rather than a SPA route.
+func isStaticAssetPath(cleanPath string) bool {
+	if strings.HasPrefix(cleanPath, "assets/") {
+		return true
+	}
+
+	_, ok := staticAssetExtensions[strings.ToLower(path.Ext(cleanPath))]
+
+	return ok
 }
 
 // serveIndex serves the cached index.html with injected config.

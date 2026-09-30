@@ -426,3 +426,41 @@ func TestService_Allow_ConcurrentRequests(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(numGoroutines), count, "all requests should be counted")
 }
+
+// TestService_Allow_RestoresMissingTTL verifies that a counter left without a TTL (as after a
+// Redis failover drops an unreplicated EXPIRE) gets one again instead of blocking forever.
+func TestService_Allow_RestoresMissingTTL(t *testing.T) {
+	mr := miniredis.RunT(t)
+	defer mr.Close()
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer client.Close()
+
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	svc := NewService(logger, client, "fail_open")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	key := "rate_limit:10.42.25.1:health"
+	require.NoError(t, mr.Set(key, "106440"))
+	assert.Equal(t, time.Duration(0), mr.TTL(key), "precondition: counter has no TTL")
+
+	allowed, _, resetAt, err := svc.Allow(ctx, "10.42.25.1", "health", 100000, time.Minute)
+	require.NoError(t, err)
+	assert.False(t, allowed, "counter is still over the limit for the current window")
+	assert.True(t, resetAt.After(time.Now()), "reset time should be in the future")
+
+	ttl := mr.TTL(key)
+	assert.Greater(t, ttl, 50*time.Second, "TTL should be restored")
+	assert.LessOrEqual(t, ttl, time.Minute)
+
+	mr.FastForward(time.Minute + time.Second)
+
+	allowed, remaining, _, err := svc.Allow(ctx, "10.42.25.1", "health", 100000, time.Minute)
+	require.NoError(t, err)
+	assert.True(t, allowed, "counter should reset once the restored TTL expires")
+	assert.Equal(t, 99999, remaining)
+}

@@ -77,10 +77,22 @@ func (s *service) Allow(
 ) (bool, int, time.Time, error) {
 	redisKey := fmt.Sprintf("rate_limit:%s:%s", ip, key)
 
-	// Increment counter
-	count, err := s.redis.Incr(ctx, redisKey).Result()
+	// EXPIRE NX runs on every request, not only the first, so a counter that lost its TTL
+	// (e.g. an EXPIRE not yet replicated when Redis failed over) heals instead of growing forever.
+	var (
+		incrCmd *redis.IntCmd
+		ttlCmd  *redis.DurationCmd
+	)
+
+	_, err := s.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		incrCmd = pipe.Incr(ctx, redisKey)
+		pipe.ExpireNX(ctx, redisKey, window)
+		ttlCmd = pipe.TTL(ctx, redisKey)
+
+		return nil
+	})
 	if err != nil {
-		s.log.WithError(err).Error("failed to increment rate limit counter in Redis")
+		s.log.WithError(err).Error("failed to update rate limit counter in Redis")
 
 		// Handle failure based on configured mode
 		if s.failureMode == "fail_closed" {
@@ -91,19 +103,11 @@ func (s *service) Allow(
 		return true, 0, time.Time{}, nil
 	}
 
-	// Set expiry on first request
-	if count == 1 {
-		if expireErr := s.redis.Expire(ctx, redisKey, window).Err(); expireErr != nil {
-			s.log.WithError(expireErr).Warn("failed to set rate limit TTL")
-		}
-	}
+	count := incrCmd.Val()
 
-	// Calculate reset time
-	ttl, err := s.redis.TTL(ctx, redisKey).Result()
-	if err != nil {
-		s.log.WithError(err).Warn("failed to get rate limit TTL")
-
-		ttl = window // Fallback
+	ttl := ttlCmd.Val()
+	if ttl <= 0 {
+		ttl = window
 	}
 
 	resetAt := time.Now().Add(ttl)

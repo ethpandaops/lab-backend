@@ -153,4 +153,4 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock \
             -e RELEASE_SUFFIX=${{ env.RELEASE_SUFFIX }} \
             -e FRONTEND_TAG=${{ env.FRONTEND_TAG }} \
-            goreleaser/goreleaser-cross:v1.26.2 release --clean
+            goreleaser/goreleaser-cross:v1.27.3 release --clean

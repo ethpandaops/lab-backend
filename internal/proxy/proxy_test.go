@@ -637,3 +637,50 @@ func TestProxy_ConcurrentAccess(t *testing.T) {
 		<-done
 	}
 }
+
+func TestProxy_ServeHTTP_OpenAPI(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	spec := "openapi: 3.0.3\npaths:\n    /api/v1/fct_block:\n        get:\n            description: See /api/v1/fct_block\n    /api/v1/dim_node:\n        get: {}\n"
+
+	var gotPath string
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+
+		if r.URL.Path != "/openapi.yaml" {
+			w.WriteHeader(http.StatusNotFound)
+
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/x-yaml")
+		w.Write([]byte(spec)) //nolint:errcheck // test
+	}))
+	defer backend.Close()
+
+	p := &Proxy{
+		config:         &config.Config{},
+		proxies:        make(map[string]*httputil.ReverseProxy),
+		proxyURLs:      make(map[string]string),
+		localProxies:   make(map[string]*httputil.ReverseProxy),
+		localProxyURLs: make(map[string]string),
+		localTables:    make(map[string]map[string]bool),
+		logger:         logger,
+	}
+
+	require.NoError(t, p.AddNetwork(config.NetworkConfig{Name: "hoodi", TargetURL: backend.URL}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/hoodi/openapi.yaml", http.NoBody)
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	rec := httptest.NewRecorder()
+	p.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "/openapi.yaml", gotPath)
+	assert.Equal(t,
+		"openapi: 3.0.3\npaths:\n    /api/v1/hoodi/fct_block:\n        get:\n            description: See /api/v1/fct_block\n    /api/v1/hoodi/dim_node:\n        get: {}\n",
+		rec.Body.String())
+}

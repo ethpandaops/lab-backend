@@ -217,7 +217,7 @@ func (f *Frontend) serveIndex(w http.ResponseWriter, r *http.Request) {
 // setCacheHeaders sets appropriate cache headers based on file type.
 func (f *Frontend) setCacheHeaders(w http.ResponseWriter, filePath string) {
 	// Determine content type
-	ext := path.Ext(filePath)
+	ext := strings.ToLower(path.Ext(filePath))
 	contentType := "application/octet-stream"
 
 	switch ext {
@@ -225,8 +225,22 @@ func (f *Frontend) setCacheHeaders(w http.ResponseWriter, filePath string) {
 		contentType = "text/html; charset=utf-8"
 	case ".css":
 		contentType = "text/css; charset=utf-8"
-	case ".js":
+	case ".js", ".mjs":
 		contentType = "application/javascript; charset=utf-8"
+	case ".txt":
+		contentType = "text/plain; charset=utf-8"
+	case ".xml":
+		contentType = "application/xml; charset=utf-8"
+	case ".map":
+		contentType = "application/json; charset=utf-8"
+	case ".webmanifest":
+		contentType = "application/manifest+json; charset=utf-8"
+	case ".wasm":
+		contentType = "application/wasm"
+	case ".webp":
+		contentType = "image/webp"
+	case ".avif":
+		contentType = "image/avif"
 	case ".json":
 		contentType = "application/json; charset=utf-8"
 	case ".png":

@@ -26,6 +26,7 @@ func newTestFrontend(t *testing.T) http.Handler {
 		"index.html":         &fstest.MapFile{Data: []byte("<html><head></head><body></body></html>")},
 		"assets/app-abc1.js": &fstest.MapFile{Data: []byte("console.log('app')")},
 		"favicon.ico":        &fstest.MapFile{Data: []byte("ico")},
+		"llms.txt":           &fstest.MapFile{Data: []byte("# The Lab")},
 	}
 
 	cache := &RouteIndexCache{}
@@ -76,6 +77,29 @@ func TestFrontend_ServeHTTP_MissingAssetsAreNotServedAsIndex(t *testing.T) {
 			} else {
 				assert.NotContains(t, rec.Header().Get("Content-Type"), "text/html")
 			}
+		})
+	}
+}
+
+func TestFrontend_ServeHTTP_StaticContentTypes(t *testing.T) {
+	handler := newTestFrontend(t)
+
+	tests := []struct {
+		path        string
+		contentType string
+	}{
+		{path: "/llms.txt", contentType: "text/plain; charset=utf-8"},
+		{path: "/assets/app-abc1.js", contentType: "application/javascript; charset=utf-8"},
+		{path: "/favicon.ico", contentType: "image/x-icon"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tt.path, nil))
+
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, tt.contentType, rec.Header().Get("Content-Type"))
 		})
 	}
 }

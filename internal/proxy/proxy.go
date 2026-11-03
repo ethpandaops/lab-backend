@@ -182,6 +182,13 @@ func (p *Proxy) createReverseProxy(
 
 			r.Out.URL.Path = rewrittenPath
 
+			// The backend serves its spec at /openapi.yaml, outside /api/v1. Fetch it
+			// uncompressed so ModifyResponse can rewrite its paths for this network.
+			if rewrittenPath == openAPIPath {
+				r.Out.URL.Path = backendOpenAPIPath
+				r.Out.Header.Del("Accept-Encoding")
+			}
+
 			// Transform query parameters (slot_* to slot_start_time_*)
 			originalQuery := r.In.URL.RawQuery
 			transformedQuery := transformQueryParams(
@@ -202,6 +209,10 @@ func (p *Proxy) createReverseProxy(
 			}
 		},
 		ModifyResponse: func(r *http.Response) error {
+			if r.Request.URL.Path == backendOpenAPIPath && r.StatusCode == http.StatusOK {
+				return rewriteOpenAPIPaths(r, networkName)
+			}
+
 			return nil
 		},
 		Transport: transport,

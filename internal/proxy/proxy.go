@@ -345,6 +345,16 @@ func (p *Proxy) NetworkCount() int {
 	return len(p.proxies)
 }
 
+// TargetURL returns the backend URL the proxy forwards the network's requests to.
+func (p *Proxy) TargetURL(network string) (string, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	target, ok := p.proxyURLs[network]
+
+	return target, ok
+}
+
 // Shutdown stops the proxy and cleans up resources.
 func (p *Proxy) Shutdown() error {
 	p.logger.Info("Shutting down proxy")

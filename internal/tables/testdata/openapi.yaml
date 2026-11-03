@@ -1,0 +1,148 @@
+components:
+    schemas:
+        FctBlockHead:
+            description: Block details for the unfinalized chain
+            properties:
+                block_root:
+                    description: The root hash of the beacon block
+                    type: string
+                block_total_bytes:
+                    description: The total bytes of the beacon block payload
+                    format: uint32
+                    nullable: true
+                    type: integer
+                slot:
+                    description: The slot number from beacon block payload
+                    format: uint32
+                    type: integer
+                slot_start_date_time:
+                    description: The wall clock time when the slot started
+                    format: uint32
+                    type: integer
+                versioned_hashes:
+                    description: The versioned hashes
+                    items:
+                        type: string
+                    type: array
+            type: object
+        GetFctBlockHeadResponse:
+            properties:
+                item:
+                    $ref: '#/components/schemas/FctBlockHead'
+            type: object
+        ListFctBlockHeadResponse:
+            description: Response for listing fct_block_head records
+            properties:
+                fct_block_head:
+                    items:
+                        $ref: '#/components/schemas/FctBlockHead'
+                    type: array
+                next_page_token:
+                    type: string
+            type: object
+        DimNode:
+            properties:
+                name:
+                    description: The node name
+                    type: string
+            type: object
+        ListDimNodeResponse:
+            properties:
+                dim_node:
+                    items:
+                        $ref: '#/components/schemas/DimNode'
+                    type: array
+                next_page_token:
+                    type: string
+            type: object
+info:
+    title: CBT API
+    version: test
+openapi: 3.0.3
+paths:
+    /api/v1/fct_block_head:
+        get:
+            description: Block details for the unfinalized chain
+            operationId: FctBlockHeadService_List
+            parameters:
+                - description: 'The wall clock time when the slot started (filter: eq)'
+                  in: query
+                  name: slot_start_date_time_eq
+                  schema:
+                    format: uint32
+                    type: integer
+                  x-required-group: primary_key
+                - description: 'The wall clock time when the slot started (filter: gte)'
+                  in: query
+                  name: slot_start_date_time_gte
+                  schema:
+                    format: uint32
+                    type: integer
+                  x-required-group: primary_key
+                - description: 'The slot number from beacon block payload (filter: eq)'
+                  in: query
+                  name: slot_eq
+                  schema:
+                    format: uint32
+                    type: integer
+                  x-required-group: primary_key
+                - description: 'The slot number from beacon block payload (filter: in_values) (comma-separated list)'
+                  in: query
+                  name: slot_in_values
+                  schema:
+                    type: string
+                - description: 'The root hash of the beacon block (filter: like)'
+                  in: query
+                  name: block_root_like
+                  schema:
+                    type: string
+                - description: The maximum number of fct_block_head to return.
+                  in: query
+                  name: page_size
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: page_token
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListFctBlockHeadResponse'
+                    description: OK
+    /api/v1/fct_block_head/{slot_start_date_time}:
+        get:
+            operationId: FctBlockHeadService_Get
+            parameters:
+                - in: path
+                  name: slot_start_date_time
+                  required: true
+                  schema:
+                    format: uint32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFctBlockHeadResponse'
+                    description: OK
+    /api/v1/dim_node:
+        get:
+            operationId: DimNodeService_List
+            parameters:
+                - in: query
+                  name: name_eq
+                  schema:
+                    type: string
+                  x-required-group: primary_key
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListDimNodeResponse'
+                    description: OK

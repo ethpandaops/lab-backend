@@ -20,6 +20,7 @@ import (
 	"github.com/ethpandaops/lab-backend/internal/proxy"
 	"github.com/ethpandaops/lab-backend/internal/ratelimit"
 	"github.com/ethpandaops/lab-backend/internal/redis"
+	"github.com/ethpandaops/lab-backend/internal/tables"
 	"github.com/ethpandaops/lab-backend/internal/wallclock"
 )
 
@@ -90,8 +91,17 @@ func New(
 		return nil, fmt.Errorf("failed to create proxy: %w", err)
 	}
 
-	mux.Handle("/api/v1/", proxyHandler)
+	// Table catalog in front of the proxy for all other API routes
+	tablesHandler := api.NewTablesHandler(
+		tables.NewService(proxyHandler.TargetURL, logger),
+		boundsProvider,
+		proxyHandler,
+		logger,
+	)
+
+	mux.Handle("/api/v1/", tablesHandler)
 	logger.WithField("networks", proxyHandler.NetworkCount()).Info("Registered proxy routes")
+	logger.WithField("route", "GET /api/v1/{network}/tables[/{table}]").Info("Registered route")
 
 	// Frontend handler (catch-all for non-API routes)
 	// Pass providers so frontend can refresh its cache when data updates

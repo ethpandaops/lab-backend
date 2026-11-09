@@ -488,8 +488,7 @@ func TestRateLimit_NoMatchingRule(t *testing.T) {
 	assert.Equal(t, 0, callCount, "rate limiter should not be called")
 }
 
-// TestRateLimit_IPExtraction verifies that client IP is extracted correctly
-// from CF-Connecting-IP > X-Forwarded-For > RemoteAddr.
+// TestRateLimit_IPExtraction verifies client identity resolution for direct and proxied requests.
 func TestRateLimit_IPExtraction(t *testing.T) {
 	logger := logrus.New()
 	logger.SetOutput(io.Discard)
@@ -504,84 +503,108 @@ func TestRateLimit_IPExtraction(t *testing.T) {
 		},
 	}
 
-	cfg := config.RateLimitingConfig{
-		Enabled:     true,
-		FailureMode: "fail_open",
-		Rules: []config.RateLimitRule{
-			{
-				Name:        "api",
-				PathPattern: "^/api/.*",
-				Limit:       10,
-				Window:      1 * time.Minute,
-			},
-		},
-	}
-
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := RateLimit(logger, cfg, mock)
-	wrapped := middleware(handler)
-
 	tests := []struct {
-		name           string
-		remoteAddr     string
-		cfConnectingIP string
-		xForwardedFor  string
-		xRealIP        string
-		expectedIP     string
+		name              string
+		remoteAddr        string
+		trustedProxyCIDRs []string
+		headers           map[string]string
+		expectedIP        string
 	}{
 		{
-			name:           "CF-Connecting-IP takes priority",
-			remoteAddr:     "10.0.0.1:12345",
-			cfConnectingIP: "203.0.113.1",
-			xForwardedFor:  "198.51.100.1, 192.0.2.1",
-			xRealIP:        "198.18.0.1",
-			expectedIP:     "203.0.113.1",
-		},
-		{
-			name:          "X-Forwarded-For when no CF-Connecting-IP",
-			remoteAddr:    "10.0.0.1:12345",
-			xForwardedFor: "203.0.113.2, 198.51.100.1",
-			xRealIP:       "198.18.0.1",
-			expectedIP:    "203.0.113.2",
-		},
-		{
-			name:       "X-Real-IP when no CF or X-Forwarded-For",
-			remoteAddr: "10.0.0.1:12345",
-			xRealIP:    "203.0.113.3",
-			expectedIP: "203.0.113.3",
-		},
-		{
-			name:       "RemoteAddr fallback",
+			name:       "direct peer without forwarding metadata",
 			remoteAddr: "203.0.113.4:54321",
 			expectedIP: "203.0.113.4",
 		},
 		{
-			name:       "RemoteAddr without port",
+			name:       "direct peer without port",
 			remoteAddr: "203.0.113.5",
 			expectedIP: "203.0.113.5",
+		},
+		{
+			name:       "forwarding metadata ignored without trusted proxies",
+			remoteAddr: "198.51.100.10:12345",
+			headers: map[string]string{
+				"CF-Connecting-IP": "203.0.113.1",
+				"X-Forwarded-For":  "203.0.113.2, 10.0.0.2",
+				"X-Real-IP":        "203.0.113.3",
+			},
+			expectedIP: "198.51.100.10",
+		},
+		{
+			name:              "forwarding metadata ignored for peer outside trusted ranges",
+			remoteAddr:        "198.51.100.10:12345",
+			trustedProxyCIDRs: []string{"10.0.0.0/8"},
+			headers: map[string]string{
+				"X-Forwarded-For": "203.0.113.2, 10.0.0.2",
+			},
+			expectedIP: "198.51.100.10",
+		},
+		{
+			name:              "trusted proxy chain resolves nearest untrusted address",
+			remoteAddr:        "10.0.0.3:12345",
+			trustedProxyCIDRs: []string{"10.0.0.0/8"},
+			headers: map[string]string{
+				"X-Forwarded-For": "192.0.2.20, 203.0.113.20, 10.0.0.2",
+			},
+			expectedIP: "203.0.113.20",
+		},
+		{
+			name:              "trusted IPv6 proxy chain resolves client",
+			remoteAddr:        "[2001:db8:1::3]:12345",
+			trustedProxyCIDRs: []string{"2001:db8:1::/48"},
+			headers: map[string]string{
+				"X-Forwarded-For": "2001:db8:2::20, 2001:db8:1::2",
+			},
+			expectedIP: "2001:db8:2::20",
+		},
+		{
+			name:              "malformed trusted chain falls back to peer",
+			remoteAddr:        "10.0.0.3:12345",
+			trustedProxyCIDRs: []string{"10.0.0.0/8"},
+			headers: map[string]string{
+				"X-Forwarded-For": "203.0.113.2, invalid, 10.0.0.2",
+			},
+			expectedIP: "10.0.0.3",
+		},
+		{
+			name:              "headers outside the proxy contract are ignored",
+			remoteAddr:        "10.0.0.3:12345",
+			trustedProxyCIDRs: []string{"10.0.0.0/8"},
+			headers: map[string]string{
+				"CF-Connecting-IP": "203.0.113.1",
+				"X-Real-IP":        "203.0.113.3",
+			},
+			expectedIP: "10.0.0.3",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			capturedIP = ""
+			cfg := config.RateLimitingConfig{
+				Enabled:           true,
+				FailureMode:       "fail_open",
+				TrustedProxyCIDRs: tt.trustedProxyCIDRs,
+				Rules: []config.RateLimitRule{
+					{
+						Name:        "api",
+						PathPattern: "^/api/.*",
+						Limit:       10,
+						Window:      time.Minute,
+					},
+				},
+			}
+			wrapped := RateLimit(logger, cfg, mock)(handler)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/test", http.NoBody)
 			req.RemoteAddr = tt.remoteAddr
 
-			if tt.cfConnectingIP != "" {
-				req.Header.Set("CF-Connecting-IP", tt.cfConnectingIP)
-			}
-
-			if tt.xForwardedFor != "" {
-				req.Header.Set("X-Forwarded-For", tt.xForwardedFor)
-			}
-
-			if tt.xRealIP != "" {
-				req.Header.Set("X-Real-IP", tt.xRealIP)
+			for name, value := range tt.headers {
+				req.Header.Set(name, value)
 			}
 
 			rec := httptest.NewRecorder()

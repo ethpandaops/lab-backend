@@ -227,6 +227,13 @@ func TestProxy_ServeHTTP(t *testing.T) {
 			expectedBody:   "network not found",
 		},
 		{
+			name:           "removed feature path is not handled specially",
+			requestPath:    "/api/v1/gas-profiler/mainnet/simulate-block",
+			networkExists:  false,
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "network not found",
+		},
+		{
 			name:           "invalid path returns 400",
 			requestPath:    "/invalid",
 			networkExists:  false,

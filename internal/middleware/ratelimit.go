@@ -41,11 +41,11 @@ func RateLimit(
 
 	// Pre-parse exempt IP ranges
 	exemptNets := parseExemptIPs(cfg.ExemptIPs)
+	trustedProxyNets := parseCIDRs(cfg.TrustedProxyCIDRs)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Extract client IP
-			ip := extractClientIP(r)
+			ip := extractClientIP(r, trustedProxyNets)
 
 			// Check if IP is whitelisted
 			if isExempt(ip, exemptNets) {
@@ -116,34 +116,45 @@ func RateLimit(
 	}
 }
 
-// extractClientIP extracts the real client IP from the request.
-// Priority: X-Forwarded-For (Cloudflare) > X-Real-IP > RemoteAddr.
-func extractClientIP(r *http.Request) string {
-	// Cloudflare sets CF-Connecting-IP
-	if ip := r.Header.Get("CF-Connecting-IP"); ip != "" {
-		return ip
+func extractClientIP(r *http.Request, trustedProxyNets []*net.IPNet) string {
+	peer := remoteIP(r.RemoteAddr)
+	parsedPeer := net.ParseIP(peer)
+	if parsedPeer == nil || !isIPInNetworks(parsedPeer, trustedProxyNets) {
+		return peer
 	}
 
-	// X-Forwarded-For (may contain multiple IPs, take first)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		ips := strings.Split(xff, ",")
-		if len(ips) > 0 {
-			return strings.TrimSpace(ips[0])
+	forwardedFor := r.Header.Get("X-Forwarded-For")
+	if forwardedFor == "" {
+		return peer
+	}
+
+	addresses := strings.Split(forwardedFor, ",")
+	for i := len(addresses) - 1; i >= 0; i-- {
+		address := net.ParseIP(strings.TrimSpace(addresses[i]))
+		if address == nil {
+			return peer
+		}
+
+		if !isIPInNetworks(address, trustedProxyNets) {
+			return address.String()
 		}
 	}
 
-	// X-Real-IP
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
+	return peer
+}
 
-	// Fallback to RemoteAddr (strip port)
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+func remoteIP(remoteAddr string) string {
+	ip, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		return remoteAddr
 	}
 
-	return ip
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return ip
+	}
+
+	return parsedIP.String()
 }
 
 func parseExemptIPs(exemptIPs []string) []*net.IPNet {
@@ -173,19 +184,36 @@ func parseExemptIPs(exemptIPs []string) []*net.IPNet {
 	return nets
 }
 
+func parseCIDRs(cidrs []string) []*net.IPNet {
+	nets := make([]*net.IPNet, 0, len(cidrs))
+
+	for _, cidr := range cidrs {
+		_, network, err := net.ParseCIDR(cidr)
+		if err == nil {
+			nets = append(nets, network)
+		}
+	}
+
+	return nets
+}
+
+func isIPInNetworks(ip net.IP, networks []*net.IPNet) bool {
+	for _, network := range networks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func isExempt(ip string, exemptNets []*net.IPNet) bool {
 	parsedIP := net.ParseIP(ip)
 	if parsedIP == nil {
 		return false
 	}
 
-	for _, network := range exemptNets {
-		if network.Contains(parsedIP) {
-			return true
-		}
-	}
-
-	return false
+	return isIPInNetworks(parsedIP, exemptNets)
 }
 
 func findMatchingRule(path string, rules []compiledRule) *compiledRule {

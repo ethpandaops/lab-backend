@@ -108,32 +108,40 @@ func Metrics() func(http.Handler) http.Handler {
 				bytesWritten:   0,
 			}
 
-			// Record request size
-			if r.ContentLength > 0 {
-				httpRequestSize.WithLabelValues(r.Method, r.URL.Path).Observe(float64(r.ContentLength))
-			}
-
 			// Call next handler
 			next.ServeHTTP(mrw, r)
 
 			// Record metrics
 			duration := time.Since(start)
+			path := metricPath(r)
+
+			if r.ContentLength > 0 {
+				httpRequestSize.WithLabelValues(r.Method, path).Observe(float64(r.ContentLength))
+			}
 
 			httpRequestsTotal.WithLabelValues(
 				r.Method,
-				r.URL.Path,
+				path,
 				strconv.Itoa(mrw.statusCode),
 			).Inc()
 
 			httpRequestDuration.WithLabelValues(
 				r.Method,
-				r.URL.Path,
+				path,
 			).Observe(duration.Seconds())
 
 			httpResponseSize.WithLabelValues(
 				r.Method,
-				r.URL.Path,
+				path,
 			).Observe(float64(mrw.bytesWritten))
 		})
 	}
+}
+
+func metricPath(r *http.Request) string {
+	if r.Pattern == "" {
+		return "unmatched"
+	}
+
+	return r.Pattern
 }

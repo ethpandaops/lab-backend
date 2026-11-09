@@ -261,6 +261,43 @@ func TestBoundsConfig_Validate(t *testing.T) {
 	}
 }
 
+func TestRateLimitingConfig_ValidatesTrustedProxyCIDRs(t *testing.T) {
+	tests := []struct {
+		name        string
+		cidrs       []string
+		expectError bool
+	}{
+		{name: "empty", cidrs: nil},
+		{name: "IPv4 and IPv6", cidrs: []string{"10.0.0.0/8", "2001:db8::/32"}},
+		{name: "requires CIDR notation", cidrs: []string{"10.0.0.1"}, expectError: true},
+		{name: "invalid CIDR", cidrs: []string{"not-a-cidr"}, expectError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{RateLimiting: RateLimitingConfig{
+				FailureMode:       "fail_open",
+				TrustedProxyCIDRs: tt.cidrs,
+				Rules: []RateLimitRule{{
+					Name:        "default",
+					PathPattern: ".*",
+					Limit:       1,
+					Window:      time.Minute,
+				}},
+			}}
+
+			err := cfg.validateRateLimiting()
+			if tt.expectError {
+				require.Error(t, err)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestConfig_Load(t *testing.T) {
 	tests := []struct {
 		name        string

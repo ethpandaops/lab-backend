@@ -24,7 +24,6 @@ type Config struct {
 	Bounds        BoundsConfig         `yaml:"bounds"`
 	RateLimiting  RateLimitingConfig   `yaml:"rate_limiting"`
 	Headers       HeadersConfig        `yaml:"headers"`
-	GasProfiler   GasProfilerConfig    `yaml:"gas_profiler"`
 	Download      DownloadConfig       `yaml:"download"`
 }
 
@@ -66,10 +65,11 @@ type BoundsConfig struct {
 
 // RateLimitingConfig holds rate limiting configuration.
 type RateLimitingConfig struct {
-	Enabled     bool            `yaml:"enabled"`
-	FailureMode string          `yaml:"failure_mode"` // "fail_open" or "fail_closed"
-	ExemptIPs   []string        `yaml:"exempt_ips"`   // CIDR ranges to whitelist
-	Rules       []RateLimitRule `yaml:"rules"`
+	Enabled           bool            `yaml:"enabled"`
+	FailureMode       string          `yaml:"failure_mode"`        // "fail_open" or "fail_closed"
+	ExemptIPs         []string        `yaml:"exempt_ips"`          // IPs or CIDR ranges that bypass rate limiting
+	TrustedProxyCIDRs []string        `yaml:"trusted_proxy_cidrs"` // Proxy ranges allowed to supply X-Forwarded-For
+	Rules             []RateLimitRule `yaml:"rules"`
 }
 
 // RateLimitRule defines a single rate limit rule.
@@ -240,11 +240,6 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// Validate gas profiler config
-	if err := c.GasProfiler.Validate(); err != nil {
-		return fmt.Errorf("gas_profiler: %w", err)
-	}
-
 	// Validate download proxy config
 	if err := c.Download.Validate(); err != nil {
 		return fmt.Errorf("download: %w", err)
@@ -292,6 +287,12 @@ func (c *Config) validateRateLimiting() error {
 			if net.ParseIP(cidr) == nil {
 				return fmt.Errorf("exempt_ips[%d] invalid IP or CIDR: %s", i, cidr)
 			}
+		}
+	}
+
+	for i, cidr := range c.RateLimiting.TrustedProxyCIDRs {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return fmt.Errorf("trusted_proxy_cidrs[%d] invalid CIDR: %s", i, cidr)
 		}
 	}
 

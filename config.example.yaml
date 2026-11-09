@@ -65,6 +65,10 @@ rate_limiting:
     # - "172.16.0.0/12"   # Docker default
     # - "192.168.0.0/16"  # Private network
 
+  # Proxy CIDR ranges allowed to supply X-Forwarded-For.
+  # Leave empty to use the direct peer address.
+  trusted_proxy_cidrs: []
+
   # Rate limit rules (evaluated in order, first match wins)
   rules:
     # Expensive bounds queries - stricter limit
@@ -84,29 +88,6 @@ rate_limiting:
       path_pattern: ".*"
       limit: 100       # 100 requests per minute per IP
       window: "1m"
-
-# Gas Profiler Simulation Service
-# Proxies requests to Erigon nodes with xatu RPC endpoints for gas repricing simulation
-gas_profiler:
-  enabled: false
-  request_timeout: 120s  # RPC requests can take a while for large blocks
-
-  # Erigon RPC endpoints per network
-  # Each network maps to Erigon node(s) running with --xatu.config flag
-  # Multiple endpoints per network are load-balanced with round-robin
-  endpoints:
-    # Example: Mainnet with multiple endpoints for load balancing
-    # - name: "mainnet-1"
-    #   network: "mainnet"
-    #   url: "http://erigon-mainnet-1:8545"
-    # - name: "mainnet-2"
-    #   network: "mainnet"
-    #   url: "http://erigon-mainnet-2:8545"
-
-    # Example: Holesky testnet (single endpoint)
-    # - name: "holesky"
-    #   network: "holesky"
-    #   url: "http://erigon-holesky:8545"
 
 # Beacon block & blob download proxy
 # Streams beacon blocks (from the block archive) and blob sidecars (from the

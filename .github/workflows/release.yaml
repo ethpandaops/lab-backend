@@ -34,6 +34,9 @@ jobs:
       id-token: write      # attest, and authenticate to the image mirror
       attestations: write
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.attest.outputs.image }}
+      digests: ${{ steps.attest.outputs.digests }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -152,14 +155,33 @@ jobs:
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
-            -v "${HOME}/.docker:/root/.docker" \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -e RELEASE_SUFFIX=${{ env.RELEASE_SUFFIX }} \
             -e FRONTEND_TAG=${{ env.FRONTEND_TAG }} \
             goreleaser/goreleaser-cross:v1.27.3 release --clean
 
-      - name: Mirror to Docker Hub
-        uses: ethpandaops/actions/mirror-image@dab9cb304b6a1dd648e2f1acef6169f7095f515e
+      - name: Attest images
+        id: attest
+        uses: ethpandaops/actions/mirror-image@62e1509a4fcb59de57d51c05f1e2843f2439fa99
         with:
           goreleaser-artifacts: dist/artifacts.json
+          mirror: "false"
+
+  # Separate job, so "Re-run failed jobs" retries only the mirror and never
+  # rebuilds the images.
+  mirror:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      id-token: write      # authenticate to the image mirror
+    steps:
+      - name: Mirror to Docker Hub
+        uses: ethpandaops/actions/mirror-image@62e1509a4fcb59de57d51c05f1e2843f2439fa99
+        with:
+          image: ${{ needs.release.outputs.image }}
+          tags: ${{ needs.release.outputs.digests }}
+          attest: "false"
           mirror-url: ${{ secrets.IMAGE_MIRROR_URL }}

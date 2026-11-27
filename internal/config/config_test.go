@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
 )
@@ -359,4 +360,196 @@ func TestConfig_Load_NonExistentFile(t *testing.T) {
 	_, err := Load("/nonexistent/path/config.yaml")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read config file")
+}
+
+const awkwardValue = "a\tb #c\nd: e\"f'g\\h"
+
+func unsetEnv(t *testing.T, name string) {
+	t.Helper()
+
+	t.Setenv(name, "")
+	require.NoError(t, os.Unsetenv(name))
+}
+
+func writeConfig(t *testing.T, content string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	return path
+}
+
+func TestDecodeConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		set     map[string]string
+		unset   []string
+		want    map[string]any
+		wantErr string
+	}{
+		{
+			name:    "variable is replaced",
+			content: "address: redis://user:${REDIS_PASS}@redis:6379/0",
+			set:     map[string]string{"REDIS_PASS": "s3cret"},
+			want:    map[string]any{"address": "redis://user:s3cret@redis:6379/0"},
+		},
+		{
+			name:    "multiple variables in one value",
+			content: "addr: ${HOST}:${PORT}",
+			set:     map[string]string{"HOST": "example.com", "PORT": "8080"},
+			want:    map[string]any{"addr": "example.com:8080"},
+		},
+		{
+			name:    "default used when variable unset",
+			content: "addr: ${HOST:-localhost}",
+			unset:   []string{"HOST"},
+			want:    map[string]any{"addr": "localhost"},
+		},
+		{
+			name:    "default used when variable empty",
+			content: "addr: ${HOST:-localhost}",
+			set:     map[string]string{"HOST": ""},
+			want:    map[string]any{"addr": "localhost"},
+		},
+		{
+			name:    "default ignored when variable set",
+			content: "addr: ${HOST:-localhost}",
+			set:     map[string]string{"HOST": "example.com"},
+			want:    map[string]any{"addr": "example.com"},
+		},
+		{
+			name:    "empty default allows unset variable",
+			content: "token: \"${TOKEN:-}\"",
+			unset:   []string{"TOKEN"},
+			want:    map[string]any{"token": ""},
+		},
+		{
+			name:    "empty variable without default is an error",
+			content: "token: ${TOKEN}",
+			set:     map[string]string{"TOKEN": ""},
+			wantErr: "config references unset or empty environment variables: TOKEN",
+		},
+		{
+			name:    "unset variables without default are an error",
+			content: "user: ${REDIS_USER}\nnested:\n  - pass: ${REDIS_PASS}\nagain: ${REDIS_USER}",
+			unset:   []string{"REDIS_USER", "REDIS_PASS"},
+			wantErr: "config references unset or empty environment variables: REDIS_USER, REDIS_PASS",
+		},
+		{
+			name:    "comments are not expanded",
+			content: "# address: ${REDIS_PASS}\naddr: ${HOST} # ${REDIS_PASS}",
+			set:     map[string]string{"HOST": "example.com"},
+			unset:   []string{"REDIS_PASS"},
+			want:    map[string]any{"addr": "example.com"},
+		},
+		{
+			name:    "keys are not expanded",
+			content: "${HOST}: value",
+			set:     map[string]string{"HOST": "example.com"},
+			want:    map[string]any{"${HOST}": "value"},
+		},
+		{
+			name:    "literal dollar signs are left unchanged",
+			content: "password: pa$$word $HOST $5 ${HOST",
+			set:     map[string]string{"HOST": "example.com"},
+			want:    map[string]any{"password": "pa$$word $HOST $5 ${HOST"},
+		},
+		{
+			name:    "value with YAML syntax arrives unchanged",
+			content: "plain: ${P}\ndouble: \"${P}\"\nsingle: '${P}'\nlist:\n  - ${P}\nanchored: &a ${P}\naliased: *a",
+			set:     map[string]string{"P": awkwardValue},
+			want: map[string]any{
+				"plain":    awkwardValue,
+				"double":   awkwardValue,
+				"single":   awkwardValue,
+				"list":     []any{awkwardValue},
+				"anchored": awkwardValue,
+				"aliased":  awkwardValue,
+			},
+		},
+		{
+			name:    "unquoted value resolves its type, quoted value stays a string",
+			content: "port: ${PORT}\nquoted: \"${PORT}\"\nenabled: ${ENABLED}",
+			set:     map[string]string{"PORT": "8080", "ENABLED": "true"},
+			want:    map[string]any{"port": 8080, "quoted": "8080", "enabled": true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.set {
+				t.Setenv(k, v)
+			}
+
+			for _, k := range tt.unset {
+				unsetEnv(t, k)
+			}
+
+			var got map[string]any
+
+			err := decodeConfig([]byte(tt.content), &got)
+			if tt.wantErr != "" {
+				require.EqualError(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestDecodeConfigWithoutPlaceholdersIsUnchanged(t *testing.T) {
+	data, err := os.ReadFile("../../config.example.yaml")
+	require.NoError(t, err)
+
+	var want, got any
+
+	require.NoError(t, yaml.Unmarshal(data, &want))
+	require.NoError(t, decodeConfig(data, &got))
+	assert.Equal(t, want, got)
+}
+
+func TestConfig_Load_ExpandsEnvVars(t *testing.T) {
+	t.Setenv("LAB_TEST_REDIS_PASSWORD", awkwardValue)
+	t.Setenv("LAB_TEST_REDIS_DB", "7")
+	t.Setenv("LAB_TEST_CACHE_CONTROL", "max-age=60")
+	t.Setenv("LAB_TEST_TARGET", "cbt-api:8080")
+
+	cfg, err := Load(writeConfig(t, `
+redis:
+  address: redis:6379
+  password: ${LAB_TEST_REDIS_PASSWORD}
+  db: ${LAB_TEST_REDIS_DB}
+networks:
+  - name: mainnet
+    target_url: "http://${LAB_TEST_TARGET}/api/v1"
+headers:
+  policies:
+    - name: static
+      headers:
+        Cache-Control: ${LAB_TEST_CACHE_CONTROL}
+`))
+	require.NoError(t, err)
+
+	assert.Equal(t, "redis:6379", cfg.Redis.Address)
+	assert.Equal(t, awkwardValue, cfg.Redis.Password)
+	assert.Equal(t, 7, cfg.Redis.DB)
+	require.Len(t, cfg.Networks, 1)
+	assert.Equal(t, "http://cbt-api:8080/api/v1", cfg.Networks[0].TargetURL)
+	require.Len(t, cfg.Headers.Policies, 1)
+	assert.Equal(t, "max-age=60", cfg.Headers.Policies[0].Headers["Cache-Control"])
+}
+
+func TestConfig_Load_FailsOnUnsetEnvVar(t *testing.T) {
+	unsetEnv(t, "LAB_TEST_REDIS_PASSWORD")
+
+	_, err := Load(writeConfig(t, `
+redis:
+  address: "redis://user:${LAB_TEST_REDIS_PASSWORD}@redis:6379/0"
+`))
+	require.ErrorContains(t, err, "LAB_TEST_REDIS_PASSWORD")
 }

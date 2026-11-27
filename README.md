@@ -68,6 +68,23 @@ See [RELEASING.md](RELEASING.md). Stable releases are cut automatically when [la
 
 Copy `config.example.yaml` to `config.yaml` and configure:
 
+### Environment Variables
+
+Config values can reference environment variables, so credentials can be kept out of the file:
+
+```yaml
+redis:
+  address: "${REDIS_ADDRESS}"
+  password: "${REDIS_PASSWORD:-}"
+  db: ${REDIS_DB:-0}
+```
+
+- `${VAR}` is replaced with the value of `VAR`. If `VAR` is unset or empty, lab-backend refuses to start and names the variable.
+- `${VAR:-default}` uses `default` when `VAR` is unset or empty. `${VAR:-}` makes the variable optional.
+- Only the `${...}` form is expanded: `$VAR` and any other `$` are kept as written.
+- Placeholders are expanded in values only, after the YAML is parsed. Keys and comments are never expanded, and a value containing quotes, `#`, tabs or newlines arrives exactly as set.
+- An unquoted placeholder takes the type of its value, so `db: ${REDIS_DB:-0}` can fill a number. A quoted placeholder is always a string.
+
 ### Server Settings
 
 ```yaml

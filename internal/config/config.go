@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/ethpandaops/lab-backend/internal/cartographoor"
@@ -138,11 +140,86 @@ func Load(path string) (*Config, error) {
 
 	// Parse YAML
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := decodeConfig(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
 	return &cfg, nil
+}
+
+var envVarPattern = regexp.MustCompile(`\$\{([^}:]+)(?::-([^}]*))?\}`)
+
+// decodeConfig parses data, expands placeholders in scalar values (not
+// mapping keys) and decodes the result into out. A ${VAR} without a default
+// whose VAR is unset or empty is an error. A ${VAR:-default} uses the default
+// when VAR is unset or empty.
+func decodeConfig(data []byte, out any) error {
+	var doc yaml.Node
+
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return err
+	}
+
+	if doc.Kind == 0 {
+		return nil
+	}
+
+	var missing []string
+
+	expandNode(&doc, &missing)
+
+	if len(missing) > 0 {
+		return fmt.Errorf("config references unset or empty environment variables: %s", strings.Join(missing, ", "))
+	}
+
+	return doc.Decode(out)
+}
+
+func expandNode(n *yaml.Node, missing *[]string) {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		expanded := expandEnvVars(n.Value, missing)
+		if expanded == n.Value {
+			return
+		}
+
+		n.Value = expanded
+
+		// The parser tagged the placeholder !!str; clearing the tag lets an
+		// unquoted value resolve to int, bool, etc. as if written in the file.
+		if n.Style == 0 {
+			n.Tag = ""
+		}
+	case yaml.MappingNode:
+		for i := 1; i < len(n.Content); i += 2 {
+			expandNode(n.Content[i], missing)
+		}
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, c := range n.Content {
+			expandNode(c, missing)
+		}
+	}
+}
+
+func expandEnvVars(value string, missing *[]string) string {
+	return envVarPattern.ReplaceAllStringFunc(value, func(match string) string {
+		parts := envVarPattern.FindStringSubmatchIndex(match)
+		name := match[parts[2]:parts[3]]
+
+		if v := os.Getenv(name); v != "" {
+			return v
+		}
+
+		if parts[4] >= 0 {
+			return match[parts[4]:parts[5]]
+		}
+
+		if !slices.Contains(*missing, name) {
+			*missing = append(*missing, name)
+		}
+
+		return ""
+	})
 }
 
 // Validate validates the configuration.
